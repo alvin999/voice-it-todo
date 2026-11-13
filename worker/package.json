@@ -1,0 +1,21 @@
+{
+  "name": "postittodo-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:migrate:local": "wrangler d1 execute postittodo-db --local --file=./schema.sql",
+    "db:migrate:remote": "wrangler d1 execute postittodo-db --remote --file=./schema.sql"
+  },
+  "dependencies": {
+    "hono": "^4.7.4"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250214.0",
+    "typescript": "^5.7.3",
+    "wrangler": "^3.109.0"
+  }
+}

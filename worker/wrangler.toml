@@ -1,0 +1,13 @@
+name = "postittodo-api"
+main = "src/index.ts"
+compatibility_date = "2025-02-01"
+
+# 綁定 D1 資料庫 (執行 `npx wrangler d1 create postittodo-db` 後填入 database_id)
+[[d1_databases]]
+binding = "DB"
+database_name = "postittodo-db"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+# 選配：Workers AI (免費額度 10,000 Neurons/日，用於語音轉文字與脈絡拆解)
+[ai]
+binding = "AI"
