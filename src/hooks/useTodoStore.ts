@@ -219,7 +219,7 @@ export function useTodoStore() {
       } = {}
     ) => {
       const trimmed = rawInput.trim();
-      if (!trimmed) return false;
+      if (!trimmed) return { ok: false };
 
       const {
         icon,
@@ -233,6 +233,7 @@ export function useTodoStore() {
       const fallbackParsed = parseVoiceOrTextNote(trimmed, isVoice);
       let parsedList: ParsedNoteInput[] = [fallbackParsed];
       let aiParsed = false;
+      let fallbackNotice: string | undefined = undefined;
 
       if (mode === 'smart' && byokConfig?.enabled) {
         try {
@@ -242,7 +243,8 @@ export function useTodoStore() {
             aiParsed = true;
           }
         } catch {
-          // 忽略 AI 金鑰端點失敗，改由 Workers AI 或本機規則處理
+          // AI 金鑰端點失敗，標註降級提示
+          fallbackNotice = 'AI 整理連線異常，已自動切換為本機規則拆解。';
         }
       }
 
@@ -320,7 +322,7 @@ export function useTodoStore() {
         }
       }
 
-      return true;
+      return { ok: true, fallbackNotice };
     },
     [normalizedApiBase, spaceKey]
   );
@@ -434,6 +436,31 @@ export function useTodoStore() {
     [normalizedApiBase, spaceKey]
   );
 
+  const restoreTodo = useCallback(
+    async (restoredItem: Todo) => {
+      setTodos((prev) => {
+        if (prev.some((t) => t.id === restoredItem.id)) return prev;
+        return [restoredItem, ...prev];
+      });
+
+      if (normalizedApiBase) {
+        try {
+          await fetch(`${normalizedApiBase}/api/todos`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Space-Key': spaceKey,
+            },
+            body: JSON.stringify(restoredItem),
+          });
+        } catch {
+          setSyncStatus((prev) => ({ ...prev, error: '復原已套用本機，雲端同步稍後重試' }));
+        }
+      }
+    },
+    [normalizedApiBase, spaceKey]
+  );
+
   return {
     todos,
     spaceKey,
@@ -447,6 +474,7 @@ export function useTodoStore() {
     updateTodo,
     toggleTodo,
     deleteTodo,
+    restoreTodo,
     reorderTodos,
   };
 }

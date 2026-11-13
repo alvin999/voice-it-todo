@@ -61,6 +61,7 @@ function formatRelativeDate(iso: string): string {
 
 interface SortableNoteCardProps {
   todo: Todo;
+  canReorder?: boolean;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
   onUpdate: (
@@ -71,6 +72,7 @@ interface SortableNoteCardProps {
 
 function SortableNoteCard({
   todo,
+  canReorder = true,
   onToggle,
   onDelete,
   onUpdate,
@@ -123,15 +125,21 @@ function SortableNoteCard({
         } ${iconPickerOpen ? 'is-picker-open' : ''}`}
     >
       <div className="note-main">
-        <button
-          type="button"
-          className="drag-handle"
-          aria-label="拖曳調整順序"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical size={16} />
-        </button>
+        {canReorder ? (
+          <button
+            type="button"
+            className="drag-handle"
+            aria-label="拖曳調整順序"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical size={16} />
+          </button>
+        ) : (
+          <div className="drag-handle is-disabled" title="清除搜尋並切換至全部時可拖曳排序">
+            <GripVertical size={16} />
+          </div>
+        )}
 
         <button
           type="button"
@@ -341,6 +349,7 @@ export function App() {
     updateTodo,
     toggleTodo,
     deleteTodo,
+    restoreTodo,
     reorderTodos,
   } = useTodoStore();
 
@@ -357,6 +366,9 @@ export function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [byokModalOpen, setByokModalOpen] = useState(false);
+  const [aiNotice, setAiNotice] = useState<string | null>(null);
+  const [recentlyDeleted, setRecentlyDeleted] = useState<Todo | null>(null);
+  const undoTimeoutRef = useRef<number | null>(null);
 
   const byok = useByokConfig();
 
@@ -416,26 +428,58 @@ export function App() {
     }
     setIsSubmitting(true);
     try {
-      const ok = await addTodo(rawInput, {
+      const res = await addTodo(rawInput, {
         icon: selectedIcon,
         mode: parseMode,
         respectManualIcon: hasManualIcon,
         isVoice: usedVoiceInDraft,
         byokConfig: byok.config,
       });
-      if (ok) {
+      if (res.ok) {
         setDraftTitle('');
         setDraftContext('');
         setUsedVoiceInDraft(false);
         setSelectedIcon('sticky-note');
         setHasManualIcon(false);
+        if (res.fallbackNotice) {
+          setAiNotice(res.fallbackNotice);
+        } else {
+          setAiNotice(null);
+        }
       }
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const handleDelete = (id: string) => {
+    const target = todos.find((t) => t.id === id);
+    if (target) {
+      setRecentlyDeleted(target);
+      if (undoTimeoutRef.current) {
+        window.clearTimeout(undoTimeoutRef.current);
+      }
+      undoTimeoutRef.current = window.setTimeout(() => {
+        setRecentlyDeleted(null);
+      }, 5000);
+    }
+    deleteTodo(id);
+  };
+
+  const handleUndoDelete = () => {
+    if (recentlyDeleted) {
+      void restoreTodo(recentlyDeleted);
+      setRecentlyDeleted(null);
+      if (undoTimeoutRef.current) {
+        window.clearTimeout(undoTimeoutRef.current);
+      }
+    }
+  };
+
+  const isReorderEnabled = filter === 'all' && !searchQuery.trim();
+
   const handleDragEnd = (event: DragEndEvent) => {
+    if (!isReorderEnabled) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -467,11 +511,19 @@ export function App() {
     URL.revokeObjectURL(url);
   };
 
+  const [spaceError, setSpaceError] = useState<string | null>(null);
+
   const handleSaveSyncSettings = async () => {
-    setSpaceKey(spaceInput);
+    setSpaceError(null);
+    const cleaned = spaceInput.trim();
+    if (!/^[a-zA-Z0-9_-]{4,64}$/.test(cleaned)) {
+      setSpaceError('空間識別碼必須為 4 至 64 個英數字、減號或底線字元');
+      return;
+    }
+    setSpaceKey(cleaned);
     setApiUrl(apiInput);
     if (apiInput.trim()) {
-      await fetchFromCloud(apiInput.trim().replace(/\/+$/, ''), spaceInput.trim());
+      await fetchFromCloud(apiInput.trim().replace(/\/+$/, ''), cleaned);
     }
     setSyncModalOpen(false);
   };
@@ -715,6 +767,21 @@ export function App() {
         </div>
       </form>
 
+      {aiNotice && (
+        <div className="notice-banner">
+          <span>{aiNotice}</span>
+          <button
+            type="button"
+            className="icon-btn"
+            style={{ width: 22, height: 22 }}
+            onClick={() => setAiNotice(null)}
+            aria-label="關閉提示"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
+
       {syncStatus.error && <div className="error-toast">{syncStatus.error}</div>}
 
       <div className="toolbar">
@@ -784,8 +851,9 @@ export function App() {
                 <SortableNoteCard
                   key={todo.id}
                   todo={todo}
+                  canReorder={isReorderEnabled}
                   onToggle={toggleTodo}
-                  onDelete={deleteTodo}
+                  onDelete={handleDelete}
                   onUpdate={updateTodo}
                 />
               ))}
@@ -828,7 +896,10 @@ export function App() {
                   id="space-key-input"
                   className="field-input"
                   value={spaceInput}
-                  onChange={(e) => setSpaceInput(e.target.value)}
+                  onChange={(e) => {
+                    setSpaceInput(e.target.value);
+                    if (spaceError) setSpaceError(null);
+                  }}
                   placeholder="例如：space_my_notes"
                 />
                 <button
@@ -840,9 +911,15 @@ export function App() {
                   <span>{copiedHint ? '已複製' : '複製連結'}</span>
                 </button>
               </div>
-              <p className="field-help">
-                免註冊即可透過 Space Key 隔離資料；在其他裝置開啟同一個連結即可同步。
-              </p>
+              {spaceError ? (
+                <p className="field-help" style={{ color: 'var(--vermilion)' }}>
+                  {spaceError}
+                </p>
+              ) : (
+                <p className="field-help">
+                  免註冊即可透過 Space Key 隔離資料；在其他裝置開啟同一個連結即可同步。
+                </p>
+              )}
             </div>
 
             <div className="field-group">
@@ -916,6 +993,30 @@ export function App() {
         onLock={byok.lockSession}
         onClearKey={byok.clearApiKey}
       />
+
+      {recentlyDeleted && (
+        <aside className="toast-undo" role="status" aria-live="polite">
+          <div className="toast-undo-content">
+            <span>已刪除便利貼：「{recentlyDeleted.title}」</span>
+            <button
+              type="button"
+              className="toast-undo-btn"
+              onClick={handleUndoDelete}
+            >
+              復原
+            </button>
+          </div>
+          <button
+            type="button"
+            className="icon-btn"
+            style={{ width: 20, height: 20 }}
+            onClick={() => setRecentlyDeleted(null)}
+            aria-label="關閉"
+          >
+            <X size={12} />
+          </button>
+        </aside>
+      )}
     </div>
   );
 }
