@@ -462,7 +462,7 @@ export function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `postittodo-${spaceKey}.json`;
+    a.download = `voiceittodo-${spaceKey}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -546,6 +546,7 @@ export function App() {
               type="text"
               className="composer-title-input"
               value={draftTitle}
+              placeholder="想記下什麼待辦？（或點擊右側麥克風直接口述）"
               onChange={(e) => setDraftTitle(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -574,6 +575,7 @@ export function App() {
               ref={contextInputRef}
               className="composer-context-textarea"
               value={draftContext}
+              placeholder="補充原因、對象、型號或期限，避免過幾天忘記..."
               onChange={(e) => setDraftContext(e.target.value)}
               onMouseDown={(e) => {
                 // 輸入框皆為空白時，點選內文自動導向標題輸入
@@ -699,7 +701,7 @@ export function App() {
             <span className="shortcut-hint">
               {parseMode === 'smart' && !byok.config.enabled
                 ? '未設定 AI 金鑰，將自動降級本機整理'
-                : 'Enter 換行・Ctrl+Enter 送出'}
+                : 'Enter 填寫脈絡・Ctrl+Enter 送出'}
             </span>
             <button
               type="submit"
@@ -765,7 +767,7 @@ export function App() {
       {filteredTodos.length === 0 ? (
         <div className="empty-state">
           <strong>目前沒有符合條件的便利貼</strong>
-          <p>按一下右上角麥克風直接口述，系統會自動幫你保留完整脈絡。</p>
+          <p>按一下輸入框右側麥克風直接口述，系統會自動幫你保留完整脈絡。</p>
         </div>
       ) : (
         <DndContext

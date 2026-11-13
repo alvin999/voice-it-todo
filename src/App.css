@@ -370,23 +370,26 @@
   gap: 6px;
   padding: 8px 16px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--paper-400);
-  background: var(--paper-300);
-  color: var(--ink-800);
+  border: 1px solid var(--celadon-700);
+  background: var(--celadon-700);
+  color: #ffffff;
   font-size: 0.82rem;
   font-weight: 500;
   cursor: pointer;
+  box-shadow: var(--shadow-sm);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--paper-400);
-  color: var(--ink-900);
+  background: var(--celadon-800);
+  border-color: var(--celadon-800);
+  color: #ffffff;
 }
 
 .btn-primary:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 /* ===== Filter & Search Toolbar ===== */
