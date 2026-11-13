@@ -1,4 +1,4 @@
-import type { ByokConfig, ByokProvider, NoteColor, ParsedNoteInput } from '../types';
+import type { ByokConfig, ByokProvider, ParsedNoteInput } from '../types';
 import { isNoteIconId, NOTE_ICON_META } from './noteIcons';
 
 export interface ProviderPreset {
@@ -152,16 +152,13 @@ export async function fetchAvailableModels(params: {
   return results.sort((a, b) => a.id.localeCompare(b.id));
 }
 
-const VALID_COLORS = new Set<NoteColor>(['amber', 'sage', 'sky', 'rose', 'slate']);
-
 const ICON_GUIDE = NOTE_ICON_META.map((item) => `${item.id}(${item.hint})`).join('、');
 
 const SYSTEM_PROMPT = [
   '你是繁體中文（台灣用語）待辦事項整理助手。請去除「那個、就是、嗯」等口語贅字，將使用者的口語或隨手記拆解為結構化待辦。',
   '若輸入包含多件彼此獨立的事，請拆成多筆（最多 5 筆）；若只有一件事則輸出 1 筆。',
   '只輸出合法 JSON，不要任何額外文字或 markdown，格式為：',
-  '{"items":[{"title":"精簡行動標題(15字內)","contextNote":"補充脈絡與原因細節，避免過幾天忘記","tags":["最多2個簡短時間或分類標籤"],"color":"配色","icon":"圖示ID"}]}',
-  'color 只能從以下 5 個擇一：rose(緊急/重要/期限迫近/醫療健康)、amber(日常提醒/採買補貨/生活瑣事)、sky(工作任務/會議/溝通聯絡/學習)、sage(財務繳費/運動習慣/居家綠化)、slate(純備忘/靈感/低優先度)。',
+  '{"items":[{"title":"精簡行動標題(15字內)","contextNote":"補充脈絡與原因細節，避免過幾天忘記","tags":["最多2個簡短時間或分類標籤"],"icon":"圖示ID"}]}',
   `icon 只能從以下 ID 擇一：${ICON_GUIDE}。`,
 ].join('\n');
 
@@ -169,7 +166,6 @@ interface RawAiItem {
   title?: unknown;
   contextNote?: unknown;
   tags?: unknown;
-  color?: unknown;
   icon?: unknown;
 }
 
@@ -177,10 +173,6 @@ function normalizeAiItem(item: RawAiItem, rawText: string): ParsedNoteInput | nu
   if (typeof item.title !== 'string' || !item.title.trim()) {
     return null;
   }
-  const color =
-    typeof item.color === 'string' && VALID_COLORS.has(item.color as NoteColor)
-      ? (item.color as NoteColor)
-      : undefined;
   const icon = isNoteIconId(item.icon) ? item.icon : undefined;
 
   return {
@@ -190,7 +182,6 @@ function normalizeAiItem(item: RawAiItem, rawText: string): ParsedNoteInput | nu
     tags: Array.isArray(item.tags)
       ? item.tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 3)
       : [],
-    color,
     icon,
   };
 }

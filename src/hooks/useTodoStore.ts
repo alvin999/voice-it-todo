@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   ByokConfig,
   InputParseMode,
-  NoteColor,
   NoteIconId,
   ParsedNoteInput,
   SyncStatus,
@@ -212,10 +211,8 @@ export function useTodoStore() {
     async (
       rawInput: string,
       options: {
-        color?: NoteColor;
         icon?: NoteIconId;
         mode?: InputParseMode;
-        respectManualColor?: boolean;
         respectManualIcon?: boolean;
         isVoice?: boolean;
         byokConfig?: ByokConfig;
@@ -225,10 +222,8 @@ export function useTodoStore() {
       if (!trimmed) return false;
 
       const {
-        color = 'amber',
         icon,
         mode = 'smart',
-        respectManualColor = false,
         respectManualIcon = false,
         isVoice = false,
         byokConfig,
@@ -288,7 +283,7 @@ export function useTodoStore() {
         contextNote: item.contextNote,
         transcript: item.transcript,
         tags: item.tags,
-        color: respectManualColor ? color : (item.color ?? color),
+        color: 'amber',
         icon: respectManualIcon ? icon : (item.icon ?? icon),
         completed: false,
         order: idx,

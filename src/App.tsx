@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -43,12 +43,10 @@ import { IconPickerPopover } from './components/IconPickerPopover';
 import { useByokConfig } from './hooks/useByokConfig';
 import { useTodoStore } from './hooks/useTodoStore';
 import { useVoiceInput } from './hooks/useVoiceInput';
-import type { FilterType, InputParseMode, NoteColor, NoteIconId, Todo } from './types';
+import type { FilterType, InputParseMode, NoteIconId, Todo } from './types';
 import { PROVIDER_PRESETS } from './utils/byokAi';
 import { getNoteIconMeta, NOTE_ICON_META } from './utils/noteIcons';
 import './App.css';
-
-const NOTE_COLORS: NoteColor[] = ['amber', 'sage', 'sky', 'rose', 'slate'];
 
 function formatRelativeDate(iso: string): string {
   const date = new Date(iso);
@@ -121,9 +119,8 @@ function SortableNoteCard({
     <article
       ref={setNodeRef}
       style={style}
-      className={`note-card color-${todo.color} ${todo.completed ? 'is-completed' : ''} ${
-        isDragging ? 'is-dragging' : ''
-      } ${iconPickerOpen ? 'is-picker-open' : ''}`}
+      className={`note-card ${todo.completed ? 'is-completed' : ''} ${isDragging ? 'is-dragging' : ''
+        } ${iconPickerOpen ? 'is-picker-open' : ''}`}
     >
       <div className="note-main">
         <button
@@ -258,18 +255,7 @@ function SortableNoteCard({
                   })}
                 </div>
               </div>
-              <div className="drawer-footer">
-                <div className="color-dots">
-                  {NOTE_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      className={`color-dot ${c} ${todo.color === c ? 'is-active' : ''}`}
-                      aria-label={`切換顏色 ${c}`}
-                      onClick={() => onUpdate(todo.id, { color: c })}
-                    />
-                  ))}
-                </div>
+              <div className="drawer-footer" style={{ justifyContent: 'flex-end' }}>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     type="button"
@@ -329,17 +315,6 @@ function SortableNoteCard({
                 </div>
               </div>
               <div className="drawer-footer">
-                <div className="color-dots">
-                  {NOTE_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      className={`color-dot ${c} ${todo.color === c ? 'is-active' : ''}`}
-                      aria-label={`切換顏色 ${c}`}
-                      onClick={() => onUpdate(todo.id, { color: c })}
-                    />
-                  ))}
-                </div>
                 <span className="timestamp-text">
                   建立於 {formatRelativeDate(todo.createdAt)}
                 </span>
@@ -369,9 +344,10 @@ export function App() {
     reorderTodos,
   } = useTodoStore();
 
-  const [draft, setDraft] = useState('');
-  const [selectedColor, setSelectedColor] = useState<NoteColor>('amber');
-  const [hasManualColor, setHasManualColor] = useState(false);
+  const [draftTitle, setDraftTitle] = useState('');
+  const [draftContext, setDraftContext] = useState('');
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const contextInputRef = useRef<HTMLTextAreaElement>(null);
   const [selectedIcon, setSelectedIcon] = useState<NoteIconId>('sticky-note');
   const [hasManualIcon, setHasManualIcon] = useState(false);
   const [parseMode, setParseMode] = useState<InputParseMode>('smart');
@@ -392,7 +368,16 @@ export function App() {
     lang: 'zh-TW',
     onFinalTranscript: (chunk) => {
       setUsedVoiceInDraft(true);
-      setDraft((prev) => (prev ? `${prev} ${chunk}` : chunk));
+      // 語音輸入：若標題尚無內容則填入標題；若已存在標題則補充至脈絡備註
+      setDraftTitle((prevTitle) => {
+        if (!prevTitle.trim()) {
+          return chunk;
+        }
+        setDraftContext((prevContext) =>
+          prevContext ? `${prevContext} ${chunk}` : chunk
+        );
+        return prevTitle;
+      });
     },
   });
 
@@ -424,25 +409,24 @@ export function App() {
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!draft.trim() || isSubmitting) return;
+    const rawInput = [draftTitle.trim(), draftContext.trim()].filter(Boolean).join('\n');
+    if (!rawInput || isSubmitting) return;
     if (voice.isListening) {
       voice.stop();
     }
     setIsSubmitting(true);
     try {
-      const ok = await addTodo(draft, {
-        color: selectedColor,
+      const ok = await addTodo(rawInput, {
         icon: selectedIcon,
         mode: parseMode,
-        respectManualColor: hasManualColor,
         respectManualIcon: hasManualIcon,
         isVoice: usedVoiceInDraft,
         byokConfig: byok.config,
       });
       if (ok) {
-        setDraft('');
+        setDraftTitle('');
+        setDraftContext('');
         setUsedVoiceInDraft(false);
-        setHasManualColor(false);
         setSelectedIcon('sticky-note');
         setHasManualIcon(false);
       }
@@ -524,9 +508,8 @@ export function App() {
 
           <button
             type="button"
-            className={`sync-pill ${syncStatus.mode === 'cloud' ? 'is-cloud' : ''} ${
-              syncStatus.error ? 'has-error' : ''
-            }`}
+            className={`sync-pill ${syncStatus.mode === 'cloud' ? 'is-cloud' : ''} ${syncStatus.error ? 'has-error' : ''
+              }`}
             onClick={() => {
               setSpaceInput(spaceKey);
               setApiInput(apiUrl);
@@ -550,18 +533,94 @@ export function App() {
         onSubmit={handleSubmit}
       >
         <div className="composer-input-row">
-          <textarea
-            className="composer-textarea"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                void handleSubmit();
+          <div
+            className="composer-fields"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !draftTitle.trim()) {
+                titleInputRef.current?.focus();
               }
             }}
-            placeholder="說一句話或隨手記一筆… 例如：「下週三前要把冷氣濾網型號拍給水電師傅，上次他說好像是 3M 那款」"
-          />
+          >
+            <input
+              ref={titleInputRef}
+              type="text"
+              className="composer-title-input"
+              value={draftTitle}
+              onChange={(e) => setDraftTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (e.ctrlKey || e.metaKey) {
+                    e.preventDefault();
+                    void handleSubmit();
+                  } else {
+                    e.preventDefault();
+                    contextInputRef.current?.focus();
+                  }
+                } else if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  contextInputRef.current?.focus();
+                  contextInputRef.current?.setSelectionRange(0, 0);
+                } else if (e.key === 'ArrowRight') {
+                  const input = e.currentTarget;
+                  if (input.selectionStart === input.value.length && input.selectionEnd === input.value.length) {
+                    e.preventDefault();
+                    contextInputRef.current?.focus();
+                    contextInputRef.current?.setSelectionRange(0, 0);
+                  }
+                }
+              }}
+            />
+            <textarea
+              ref={contextInputRef}
+              className="composer-context-textarea"
+              value={draftContext}
+              onChange={(e) => setDraftContext(e.target.value)}
+              onMouseDown={(e) => {
+                // 輸入框皆為空白時，點選內文自動導向標題輸入
+                if (!draftTitle.trim() && !draftContext.trim()) {
+                  e.preventDefault();
+                  titleInputRef.current?.focus();
+                }
+              }}
+              onFocus={() => {
+                if (!draftTitle.trim() && !draftContext.trim()) {
+                  titleInputRef.current?.focus();
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  void handleSubmit();
+                } else if (e.key === 'Backspace') {
+                  const textarea = e.currentTarget;
+                  if (textarea.selectionStart === 0 && textarea.selectionEnd === 0) {
+                    e.preventDefault();
+                    titleInputRef.current?.focus();
+                    const len = titleInputRef.current?.value.length ?? 0;
+                    titleInputRef.current?.setSelectionRange(len, len);
+                  }
+                } else if (e.key === 'ArrowUp') {
+                  const textarea = e.currentTarget;
+                  const textBeforeCursor = textarea.value.slice(0, textarea.selectionStart);
+                  if (!textBeforeCursor.includes('\n')) {
+                    e.preventDefault();
+                    titleInputRef.current?.focus();
+                    const len = titleInputRef.current?.value.length ?? 0;
+                    titleInputRef.current?.setSelectionRange(len, len);
+                  }
+                } else if (e.key === 'ArrowLeft') {
+                  const textarea = e.currentTarget;
+                  if (textarea.selectionStart === 0 && textarea.selectionEnd === 0) {
+                    e.preventDefault();
+                    titleInputRef.current?.focus();
+                    const len = titleInputRef.current?.value.length ?? 0;
+                    titleInputRef.current?.setSelectionRange(len, len);
+                  }
+                }
+              }}
+              rows={3}
+            />
+          </div>
 
           <button
             type="button"
@@ -600,21 +659,6 @@ export function App() {
 
         <div className="composer-footer">
           <div className="composer-options">
-            <div className="color-dots" role="group" aria-label="便利貼顏色">
-              {NOTE_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  className={`color-dot ${c} ${selectedColor === c ? 'is-active' : ''}`}
-                  aria-label={`選擇顏色 ${c}`}
-                  onClick={() => {
-                    setSelectedColor(c);
-                    setHasManualColor(true);
-                  }}
-                />
-              ))}
-            </div>
-
             <IconPickerPopover
               value={selectedIcon}
               onChange={(icon) => {
@@ -635,7 +679,7 @@ export function App() {
                 type="button"
                 className={`mode-switch-btn ${parseMode === 'normal' ? 'is-active' : ''}`}
                 onClick={() => setParseMode('normal')}
-                title="僅用本機規則純整理，不呼叫 AI、不自動改配色與圖示"
+                title="僅用本機規則純整理，不呼叫 AI、不自動判斷圖示"
               >
                 一般整理
               </button>
@@ -643,7 +687,7 @@ export function App() {
                 type="button"
                 className={`mode-switch-btn ${parseMode === 'smart' ? 'is-active' : ''}`}
                 onClick={() => setParseMode('smart')}
-                title="AI 自動解析語意、拆卡並挑選適合的圖示與配色"
+                title="AI 自動解析語意、拆卡並挑選適合的圖示"
               >
                 <Sparkles size={13} />
                 <span>智慧解析</span>
@@ -655,12 +699,12 @@ export function App() {
             <span className="shortcut-hint">
               {parseMode === 'smart' && !byok.config.enabled
                 ? '未設定 AI 金鑰，將自動降級本機整理'
-                : 'Enter 新增・Shift+Enter 換行'}
+                : 'Enter 換行・Ctrl+Enter 送出'}
             </span>
             <button
               type="submit"
               className="btn-primary"
-              disabled={!draft.trim() || isSubmitting}
+              disabled={(!draftTitle.trim() && !draftContext.trim()) || isSubmitting}
             >
               <Plus size={16} />
               <span>{isSubmitting ? '解析中...' : '新增便利貼'}</span>

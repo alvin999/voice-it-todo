@@ -150,6 +150,64 @@
   align-items: flex-start;
 }
 
+.composer-fields {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 第一行：標題輸入（字體大、字重加深、大氣沉穩，自然引導為標題） */
+.composer-title-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 1.08rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ink-900);
+  letter-spacing: 0.01em;
+  padding: 0;
+}
+
+.composer-title-input::placeholder {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--ink-400);
+}
+
+/* 第二行：脈絡內文（字體一般大小、舒適行距、支援換行，避免橫向溢出） */
+.composer-context-textarea {
+  width: 100%;
+  min-height: 76px;
+  max-height: 200px;
+  resize: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 0.92rem;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--ink-700);
+  letter-spacing: 0.01em;
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.composer-context-textarea::placeholder {
+  font-family: var(--font-serif);
+  font-size: 0.88rem;
+  color: var(--ink-300);
+}
+
 .composer-textarea {
   flex: 1;
   min-height: 70px;
@@ -164,6 +222,10 @@
   line-height: 1.65;
   color: var(--ink-900);
   letter-spacing: 0.01em;
+  overflow-x: hidden;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .composer-textarea::placeholder {
@@ -210,10 +272,13 @@
 }
 
 @keyframes micPulse {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
     box-shadow: 0 0 0 0 rgba(184, 64, 52, 0.4);
   }
+
   50% {
     transform: scale(1.05);
     box-shadow: 0 0 0 8px rgba(184, 64, 52, 0);
@@ -250,58 +315,6 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 14px;
-}
-
-/* 宋代色籤選擇 (Color Swatches) */
-.color-dots {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.color-dot {
-  width: 20px;
-  height: 20px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--paper-300);
-  cursor: pointer;
-  position: relative;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.color-dot:hover {
-  transform: scale(1.15);
-}
-
-.color-dot.is-active {
-  transform: scale(1.1);
-  border-color: var(--celadon-700);
-  box-shadow: 0 0 0 2px rgba(43, 72, 74, 0.2);
-}
-
-.color-dot.amber {
-  background: #faf4eb;
-  border-color: #eadfc7;
-}
-
-.color-dot.sage {
-  background: #edf3f2;
-  border-color: #c4ddd9;
-}
-
-.color-dot.sky {
-  background: #ebf0f5;
-  border-color: #cdd9e5;
-}
-
-.color-dot.rose {
-  background: #f8ebeb;
-  border-color: #eed5d5;
-}
-
-.color-dot.slate {
-  background: #f3f2ee;
-  border-color: #e0ded7;
 }
 
 /* 模式微標籤切換器 */
@@ -460,11 +473,23 @@
 .note-card {
   position: relative;
   border-radius: var(--radius-md);
-  border: 1px solid var(--border-strong);
-  background: #ffffff;
+  border: 1px solid #e9dfce;
+  background: #faf6ee;
   box-shadow: var(--shadow-paper-soft);
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
+}
+
+.note-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 4px;
+  background: rgba(184, 115, 30, 0.45);
+  border-radius: 0 2px 2px 0;
+  transition: all 0.25s ease;
 }
 
 .note-card:hover {
@@ -484,84 +509,14 @@
   z-index: 20;
 }
 
-/* 宣紙箋色 (Paper Swatches for Notes) */
-.note-card.color-amber {
-  background: #faf6ee;
-  border-color: #e9dfce;
-}
-.note-card.color-amber::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 12px;
-  bottom: 12px;
-  width: 4px;
-  background: rgba(184, 115, 30, 0.45);
-  border-radius: 0 2px 2px 0;
-}
-
-.note-card.color-sage {
-  background: #f1f6f5;
-  border-color: #d5e3e1;
-}
-.note-card.color-sage::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 12px;
-  bottom: 12px;
-  width: 4px;
-  background: rgba(58, 94, 96, 0.45);
-  border-radius: 0 2px 2px 0;
-}
-
-.note-card.color-sky {
-  background: #f0f4f8;
-  border-color: #d2dee9;
-}
-.note-card.color-sky::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 12px;
-  bottom: 12px;
-  width: 4px;
-  background: rgba(43, 84, 126, 0.4);
-  border-radius: 0 2px 2px 0;
-}
-
-.note-card.color-rose {
-  background: #fbf2f2;
-  border-color: #ebd6d6;
-}
-.note-card.color-rose::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 12px;
-  bottom: 12px;
-  width: 4px;
-  background: rgba(184, 64, 52, 0.4);
-  border-radius: 0 2px 2px 0;
-}
-
-.note-card.color-slate {
+.note-card.is-completed {
+  opacity: 0.68;
   background: #f4f3f0;
   border-color: #dedcd5;
 }
-.note-card.color-slate::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 12px;
-  bottom: 12px;
-  width: 4px;
-  background: rgba(110, 115, 122, 0.4);
-  border-radius: 0 2px 2px 0;
-}
 
-.note-card.is-completed {
-  opacity: 0.68;
+.note-card.is-completed::before {
+  background: rgba(110, 115, 122, 0.35);
 }
 
 .note-main {
