@@ -1199,4 +1199,20 @@
   .note-drawer {
     padding-left: 16px;
   }
+
+  .note-preview {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+  }
+}
+
+@media (hover: none) {
+  .note-actions {
+    opacity: 0.95;
+  }
+
+  .drag-handle {
+    opacity: 0.85;
+  }
 }

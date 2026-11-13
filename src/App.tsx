@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -301,27 +301,6 @@ function SortableNoteCard({
                 </div>
               )}
 
-              <div>
-                <div className="drawer-section-label">圖示</div>
-                <div className="icon-picker-grid">
-                  {NOTE_ICON_META.map((item) => {
-                    const ItemIcon = item.Icon;
-                    const isActive = iconMeta.id === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={`icon-picker-btn ${isActive ? 'is-active' : ''}`}
-                        title={item.label}
-                        aria-label={`選擇圖示 ${item.label}`}
-                        onClick={() => onUpdate(todo.id, { icon: item.id })}
-                      >
-                        <ItemIcon size={14} />
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
               <div className="drawer-footer">
                 <span className="timestamp-text">
                   建立於 {formatRelativeDate(todo.createdAt)}
@@ -527,6 +506,17 @@ export function App() {
     }
     setSyncModalOpen(false);
   };
+
+  useEffect(() => {
+    if (!syncModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSyncModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [syncModalOpen]);
 
   return (
     <div className="app-shell">

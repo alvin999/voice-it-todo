@@ -75,6 +75,17 @@ export function ByokModal({
   }, [open, config]);
 
   useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose]);
+
+  useEffect(() => {
     if (!open || isLocked) return;
 
     const currentPreset = PROVIDER_PRESETS[draft.provider];
