@@ -500,8 +500,8 @@ export function App() {
             <StickyNote size={20} />
           </div>
           <div>
-            <h1 className="brand-title">音賅 VoiceItTodo</h1>
-            <p className="brand-subtitle">是不敢不想不音賅，再謝謝你 AI</p>
+            <h1 className="brand-title">大方無虞 VoiceItTodo</h1>
+            <p className="brand-subtitle">大方吾語，大方無虞</p>
           </div>
         </div>
 

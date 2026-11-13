@@ -1,23 +1,66 @@
 :root {
-  --bg-canvas: #f5f4ef;
+  /* 宣紙微質微噪色系 (Paper Palette) - 參考 _design */
+  --paper-50: #fdfbf7;
+  --paper-100: #faf8f5;
+  --paper-200: #f4f1ea;
+  --paper-300: #ece6dc;
+  --paper-400: #ddd5c7;
+
+  --bg-canvas: var(--paper-100);
   --bg-surface: #ffffff;
-  --bg-subtle: #eceae2;
-  --text-primary: #1c1d1f;
-  --text-secondary: #5c6066;
-  --text-muted: #8b9098;
-  --border-subtle: rgba(28, 29, 31, 0.08);
-  --border-strong: rgba(28, 29, 31, 0.16);
-  --accent: #2f6f5e;
-  --accent-hover: #25594b;
-  --accent-soft: rgba(47, 111, 94, 0.1);
-  --danger: #c94a4a;
-  --danger-soft: rgba(201, 74, 74, 0.1);
-  --shadow-sm: 0 1px 2px rgba(18, 20, 23, 0.04), 0 1px 4px rgba(18, 20, 23, 0.03);
-  --shadow-md: 0 6px 20px rgba(18, 20, 23, 0.06), 0 2px 6px rgba(18, 20, 23, 0.04);
-  --shadow-lg: 0 16px 40px rgba(18, 20, 23, 0.1);
-  --radius-sm: 8px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
+  --bg-subtle: var(--paper-200);
+
+  /* 松煙墨與淡墨色階 (Ink Palette) */
+  --ink-900: #1a1d1f; /* 松煙墨 */
+  --ink-800: #2a2e33;
+  --ink-700: #40454a;
+  --ink-500: #686f77; /* 淡墨 */
+  --ink-400: #8e959e;
+  --ink-300: #c2c7ce;
+
+  --text-primary: var(--ink-900);
+  --text-secondary: var(--ink-700);
+  --text-muted: var(--ink-500);
+
+  /* 宋瓷天青／黛青 (Celadon Palette) */
+  --celadon-50: #f2f7f6;
+  --celadon-100: #e1edeb;
+  --celadon-200: #c4ddd9;
+  --celadon-600: #3a5e60; /* 黛青 */
+  --celadon-700: #2b484a; /* 宋瓷天青 */
+  --celadon-800: #1f3537;
+
+  --accent: var(--celadon-700);
+  --accent-hover: var(--celadon-800);
+  --accent-soft: rgba(43, 72, 74, 0.08);
+
+  /* 硃砂印泥 (Vermilion) */
+  --vermilion: #b84034;
+  --vermilion-light: #cd5347;
+  --danger: var(--vermilion);
+  --danger-soft: rgba(184, 64, 52, 0.08);
+
+  /* 邊框線條 */
+  --border-subtle: rgba(221, 213, 199, 0.65);
+  --border-strong: var(--paper-300);
+
+  /* 宣紙柔軟自然浮雕陰影 (Paper Soft Shadows) */
+  --shadow-sm: 0 1px 3px rgba(28, 32, 35, 0.03);
+  --shadow-paper-soft: 0 4px 20px -2px rgba(28, 32, 35, 0.03), 0 1px 3px -1px rgba(28, 32, 35, 0.02);
+  --shadow-paper-card: 0 10px 30px -4px rgba(35, 30, 24, 0.04), 0 2px 6px -2px rgba(35, 30, 24, 0.02);
+  --shadow-floating-mic: 0 12px 24px -4px rgba(43, 72, 74, 0.18);
+  --shadow-modal: 0 20px 45px -8px rgba(26, 29, 31, 0.15), 0 4px 12px -2px rgba(26, 29, 31, 0.05);
+
+  /* 簡約現代弧度 */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  /* 字體排印系統 */
+  --font-serif: 'Noto Serif TC', 'Songti TC', 'PMingLiU', serif;
+  --font-sans: 'Noto Sans TC', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 * {
@@ -27,7 +70,7 @@
 }
 
 html {
-  font-family: 'Inter', 'Noto Sans TC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--bg-canvas);
@@ -37,13 +80,20 @@ html {
 body {
   min-height: 100vh;
   background-color: var(--bg-canvas);
-  background-image: radial-gradient(rgba(28, 29, 31, 0.045) 1px, transparent 1px);
-  background-size: 24px 24px;
-  line-height: 1.5;
+  /* 宣紙微質微噪點紋理 */
+  background-image: radial-gradient(rgba(142, 149, 158, 0.08) 0.75px, transparent 0.75px);
+  background-size: 20px 20px;
+  line-height: 1.6;
+}
+
+::selection {
+  background-color: var(--celadon-100);
+  color: var(--celadon-800);
 }
 
 button,
 input,
-textarea {
+textarea,
+select {
   font-family: inherit;
 }
