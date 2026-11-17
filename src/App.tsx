@@ -181,12 +181,12 @@ function SortableNoteCard({
           }}
         >
           <div className="note-title-row">
-          <IconPickerPopover
-            value={todo.icon}
-            onChange={(icon) => onUpdate(todo.id, { icon })}
-            onOpenChange={setIconPickerOpen}
-            triggerLabel={`選擇圖示（目前：${iconMeta.label}）`}
-          />
+            <IconPickerPopover
+              value={todo.icon}
+              onChange={(icon) => onUpdate(todo.id, { icon })}
+              onOpenChange={setIconPickerOpen}
+              triggerLabel={`選擇圖示（目前：${iconMeta.label}）`}
+            />
             <div className="note-title">{todo.title}</div>
           </div>
 
@@ -380,6 +380,12 @@ export function App() {
   const [byokModalOpen, setByokModalOpen] = useState(false);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [, setTemplateUpdateTick] = useState(0);
+  const lastAutoSkeletonRef = useRef<string>('');
+  const [templatePrompt, setTemplatePrompt] = useState<{
+    icon: NoteIconId;
+    label: string;
+    skeleton: string;
+  } | null>(null);
   const [aiNotice, setAiNotice] = useState<string | null>(null);
   const [recentlyDeleted, setRecentlyDeleted] = useState<Todo | null>(null);
   const undoTimeoutRef = useRef<number | null>(null);
@@ -454,6 +460,8 @@ export function App() {
       if (res.ok) {
         setDraftTitle('');
         setDraftContext('');
+        lastAutoSkeletonRef.current = '';
+        setTemplatePrompt(null);
         setUsedVoiceInDraft(false);
         setSelectedIcon('sticky-note');
         setHasManualIcon(false);
@@ -507,16 +515,54 @@ export function App() {
     void reorderTodos(reordered);
   };
 
+  const syncDraftContextWithIcon = (icon: NoteIconId) => {
+    const config = getIconFieldConfig(icon);
+    const hasTemplate = config.enabled && config.fields.length > 0;
+    const nextSkeleton = hasTemplate ? buildFieldSkeleton(config.fields) : '';
+
+    // 僅在備註欄空白，或仍為上一個尚未編輯的自動範本時，才直接替換或清空
+    const isUntouched =
+      !draftContext.trim() || draftContext === lastAutoSkeletonRef.current;
+
+    if (isUntouched) {
+      setDraftContext(nextSkeleton);
+      lastAutoSkeletonRef.current = nextSkeleton;
+      setTemplatePrompt(null);
+    } else if (hasTemplate && draftContext !== nextSkeleton) {
+      setTemplatePrompt({
+        icon,
+        label: getNoteIconMeta(icon).label,
+        skeleton: nextSkeleton,
+      });
+    } else {
+      setTemplatePrompt(null);
+    }
+  };
+
   const handleSelectIcon = (icon: NoteIconId) => {
     setSelectedIcon(icon);
     setHasManualIcon(true);
+    syncDraftContextWithIcon(icon);
+  };
 
-    // 若該圖示有啟用自訂欄位範本，且目前脈絡備註是空白，自動填入欄位骨架
-    const config = getIconFieldConfig(icon);
-    if (config.enabled && config.fields.length > 0 && !draftContext.trim()) {
-      const skeleton = buildFieldSkeleton(config.fields);
-      setDraftContext(skeleton);
-    }
+  const handleAppendTemplate = () => {
+    if (!templatePrompt) return;
+    setDraftContext((prev) =>
+      prev.trim()
+        ? `${prev.trimEnd()}\n${templatePrompt.skeleton}`
+        : templatePrompt.skeleton
+    );
+    lastAutoSkeletonRef.current = '';
+    setTemplatePrompt(null);
+    contextInputRef.current?.focus();
+  };
+
+  const handleReplaceTemplate = () => {
+    if (!templatePrompt) return;
+    setDraftContext(templatePrompt.skeleton);
+    lastAutoSkeletonRef.current = templatePrompt.skeleton;
+    setTemplatePrompt(null);
+    contextInputRef.current?.focus();
   };
 
   const handleCopyShareLink = async () => {
@@ -760,6 +806,50 @@ export function App() {
           </div>
         )}
 
+        {templatePrompt && (
+          <div
+            className="interim-banner"
+            style={{
+              marginTop: 8,
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 8,
+            }}
+            role="status"
+          >
+            <span style={{ fontSize: '0.84rem' }}>
+              已切換至「<strong>{templatePrompt.label}</strong>」，是否套用欄位範本？
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ fontSize: '0.78rem', padding: '3px 8px' }}
+                onClick={handleAppendTemplate}
+              >
+                附加於後方
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ fontSize: '0.78rem', padding: '3px 8px' }}
+                onClick={handleReplaceTemplate}
+              >
+                覆蓋原內容
+              </button>
+              <button
+                type="button"
+                className="icon-btn"
+                style={{ width: 22, height: 22 }}
+                onClick={() => setTemplatePrompt(null)}
+                aria-label="忽略提示"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="composer-footer">
           <div className="composer-options">
             <IconPickerPopover
@@ -882,7 +972,7 @@ export function App() {
         <div className="seed-banner" role="status">
           <div className="seed-banner-text">
             <Sparkles size={14} />
-            <span>目前包含功能教學範例，歡迎點擊展開、更換圖示或拖曳排序體驗。</span>
+            <span>目前包含功能教學範例，點擊展開、更換圖示或拖曳排序體驗。</span>
           </div>
           <button
             type="button"
@@ -1072,7 +1162,16 @@ export function App() {
       <IconTemplateModal
         open={templateModalOpen}
         onClose={() => setTemplateModalOpen(false)}
-        onTemplatesUpdated={() => setTemplateUpdateTick((t) => t + 1)}
+        onTemplatesUpdated={() => {
+          setTemplateUpdateTick((t) => t + 1);
+          if (
+            hasManualIcon ||
+            (lastAutoSkeletonRef.current !== '' &&
+              draftContext === lastAutoSkeletonRef.current)
+          ) {
+            syncDraftContextWithIcon(selectedIcon);
+          }
+        }}
       />
 
       {recentlyDeleted && (

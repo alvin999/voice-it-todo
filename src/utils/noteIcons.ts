@@ -25,7 +25,7 @@ export interface NoteIconMeta {
 }
 
 export const NOTE_ICON_META: NoteIconMeta[] = [
-  { id: 'sticky-note', label: '一般便條', hint: '預設／一般待辦', Icon: StickyNote, defaultFields: ['備註', '重要性'] },
+  { id: 'sticky-note', label: '一般便條', hint: '預設／一般待辦', Icon: StickyNote, defaultFields: [] },
   { id: 'shopping-cart', label: '採買補貨', hint: '買東西、超市、網購', Icon: ShoppingCart, defaultFields: ['品項', '數量', '購買通路或預算'] },
   { id: 'phone', label: '電話聯絡', hint: '打電話、聯繫、LINE', Icon: Phone, defaultFields: ['聯絡對象', '電話或帳號', '通話討論重點'] },
   { id: 'mail', label: '信件回信', hint: '寄信、回信、通知', Icon: Mail, defaultFields: ['收件對象', '主旨重點', '附件或截止時間'] },
@@ -39,6 +39,10 @@ export const NOTE_ICON_META: NoteIconMeta[] = [
   { id: 'book-open', label: '學習閱讀', hint: '看書、課程、筆記', Icon: BookOpen, defaultFields: ['章節或單元', '核心觀念', '實踐行動'] },
   { id: 'lightbulb', label: '靈感點子', hint: '想法、備忘、創意', Icon: Lightbulb, defaultFields: ['核心點子', '為什麼想做', '下一步探索'] },
 ];
+
+export const TEMPLATE_ICON_META: NoteIconMeta[] = NOTE_ICON_META.filter(
+  (item) => item.id !== 'sticky-note'
+);
 
 const ICON_MAP = new Map<NoteIconId, NoteIconMeta>(
   NOTE_ICON_META.map((item) => [item.id, item])
@@ -67,6 +71,10 @@ export function saveIconTemplates(map: IconTemplateMap): void {
 }
 
 export function getIconFieldConfig(id: NoteIconId, map?: IconTemplateMap): IconFieldConfig {
+  // 「一般便條」為預設自由輸入狀態，不套用欄位範本
+  if (id === 'sticky-note') {
+    return { enabled: false, fields: [] };
+  }
   const currentMap = map ?? loadIconTemplates();
   const configured = currentMap[id];
   if (configured) {

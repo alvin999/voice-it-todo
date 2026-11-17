@@ -172,6 +172,7 @@ export function buildSystemPrompt(): string {
   const rulesWithFields: string[] = [];
 
   for (const [id, config] of Object.entries(templates)) {
+    if (id === 'sticky-note') continue;
     if (config?.enabled && config.fields.length > 0) {
       const fieldDesc = config.fields.map((f) => `${f}：...`).join(' / ');
       rulesWithFields.push(`- 若 icon 為 "${id}"，contextNote 請整理為：${fieldDesc}`);

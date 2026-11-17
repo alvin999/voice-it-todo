@@ -5,8 +5,8 @@ import {
   getIconFieldConfig,
   getNoteIconMeta,
   loadIconTemplates,
-  NOTE_ICON_META,
   saveIconTemplates,
+  TEMPLATE_ICON_META,
 } from '../utils/noteIcons';
 
 interface IconTemplateModalProps {
@@ -74,6 +74,38 @@ export function IconTemplateModal({
     onTemplatesUpdated?.();
   };
 
+  const handleEnableAll = () => {
+    const updated: IconTemplateMap = { ...templates };
+    TEMPLATE_ICON_META.forEach((meta) => {
+      const current = getIconFieldConfig(meta.id, templates);
+      updated[meta.id] = {
+        ...current,
+        enabled: true,
+      };
+    });
+    setTemplates(updated);
+    saveIconTemplates(updated);
+    onTemplatesUpdated?.();
+  };
+
+  const handleDisableAll = () => {
+    const updated: IconTemplateMap = { ...templates };
+    TEMPLATE_ICON_META.forEach((meta) => {
+      const current = getIconFieldConfig(meta.id, templates);
+      updated[meta.id] = {
+        ...current,
+        enabled: false,
+      };
+    });
+    setTemplates(updated);
+    saveIconTemplates(updated);
+    onTemplatesUpdated?.();
+  };
+
+  const enabledCount = TEMPLATE_ICON_META.filter(
+    (meta) => getIconFieldConfig(meta.id, templates).enabled
+  ).length;
+
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <div
@@ -105,9 +137,42 @@ export function IconTemplateModal({
           開啟後，選取此圖示會自動帶入設定好的欄位；AI 智慧解析時也會依照此格式為你整理內容。
         </p>
 
+        {/* 批次操作列 */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 10,
+            fontSize: '0.82rem',
+          }}
+        >
+          <span style={{ color: 'var(--text-muted, #64748b)' }}>
+            已啟用 {enabledCount} / {TEMPLATE_ICON_META.length} 個範本
+          </span>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ fontSize: '0.78rem', padding: '3px 8px' }}
+              onClick={handleEnableAll}
+            >
+              全部啟用
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ fontSize: '0.78rem', padding: '3px 8px' }}
+              onClick={handleDisableAll}
+            >
+              全部取消
+            </button>
+          </div>
+        </div>
+
         {/* 圖示橫向切換列 */}
         <div className="icon-template-selector" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
-          {NOTE_ICON_META.map((meta) => {
+          {TEMPLATE_ICON_META.map((meta) => {
             const IconComp = meta.Icon;
             const isSelected = meta.id === selectedIconId;
             const isEnabled = getIconFieldConfig(meta.id, templates).enabled;
