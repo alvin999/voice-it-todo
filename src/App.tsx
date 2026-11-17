@@ -65,7 +65,7 @@ interface SortableNoteCardProps {
   onDelete: (id: string) => void;
   onUpdate: (
     id: string,
-    patch: Partial<Pick<Todo, 'title' | 'contextNote' | 'color' | 'icon' | 'tags'>>
+    patch: Partial<Pick<Todo, 'title' | 'contextNote' | 'icon' | 'tags'>>
   ) => void;
 }
 

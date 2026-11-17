@@ -8,7 +8,6 @@ CREATE TABLE IF NOT EXISTS todos (
   context_note TEXT NOT NULL DEFAULT '',
   transcript TEXT NOT NULL DEFAULT '',
   tags TEXT NOT NULL DEFAULT '[]',
-  color TEXT NOT NULL DEFAULT 'amber',
   completed INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,

@@ -15,7 +15,6 @@ interface TodoRow {
   context_note: string;
   transcript: string;
   tags: string;
-  color: string;
   completed: number;
   sort_order: number;
   created_at: string;
@@ -28,14 +27,11 @@ interface TodoDTO {
   contextNote: string;
   transcript: string;
   tags: string[];
-  color: string;
   completed: boolean;
   order: number;
   createdAt: string;
   updatedAt: string;
 }
-
-const VALID_COLORS = new Set(['amber', 'sage', 'sky', 'rose', 'slate']);
 
 function serializeRow(row: TodoRow): TodoDTO {
   let tags: string[] = [];
@@ -54,7 +50,6 @@ function serializeRow(row: TodoRow): TodoDTO {
     contextNote: row.context_note,
     transcript: row.transcript,
     tags,
-    color: VALID_COLORS.has(row.color) ? row.color : 'amber',
     completed: row.completed === 1,
     order: row.sort_order,
     createdAt: row.created_at,
@@ -99,7 +94,7 @@ app.get('/api/todos', async (c) => {
   }
 
   const { results } = await c.env.DB.prepare(
-    `SELECT id, space_key, title, context_note, transcript, tags, color, completed, sort_order, created_at, updated_at
+    `SELECT id, space_key, title, context_note, transcript, tags, completed, sort_order, created_at, updated_at
      FROM todos
      WHERE space_key = ?
      ORDER BY sort_order ASC, created_at DESC`
@@ -122,7 +117,6 @@ app.post('/api/todos', async (c) => {
     contextNote?: string;
     transcript?: string;
     tags?: string[];
-    color?: string;
   }>();
 
   const title = body.title?.trim();
@@ -132,7 +126,6 @@ app.post('/api/todos', async (c) => {
 
   const id = body.id?.trim() || crypto.randomUUID();
   const now = new Date().toISOString();
-  const color = body.color && VALID_COLORS.has(body.color) ? body.color : 'amber';
   const tags = Array.isArray(body.tags)
     ? body.tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 6)
     : [];
@@ -147,8 +140,8 @@ app.post('/api/todos', async (c) => {
   const sortOrder = (minRow?.min_order ?? 1) - 1;
 
   await c.env.DB.prepare(
-    `INSERT INTO todos (id, space_key, title, context_note, transcript, tags, color, completed, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`
+    `INSERT INTO todos (id, space_key, title, context_note, transcript, tags, completed, sort_order, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`
   )
     .bind(
       id,
@@ -157,7 +150,6 @@ app.post('/api/todos', async (c) => {
       body.contextNote?.trim() ?? '',
       body.transcript?.trim() ?? '',
       JSON.stringify(tags),
-      color,
       sortOrder,
       now,
       now
@@ -171,7 +163,6 @@ app.post('/api/todos', async (c) => {
       contextNote: body.contextNote?.trim() ?? '',
       transcript: body.transcript?.trim() ?? '',
       tags,
-      color,
       completed: false,
       order: sortOrder,
       createdAt: now,
@@ -203,7 +194,6 @@ app.put('/api/todos/:id', async (c) => {
     contextNote?: string;
     transcript?: string;
     tags?: string[];
-    color?: string;
     completed?: boolean;
   }>();
 
@@ -220,15 +210,13 @@ app.put('/api/todos/:id', async (c) => {
     body.tags !== undefined
       ? JSON.stringify(body.tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 6))
       : existing.tags;
-  const nextColor =
-    body.color !== undefined && VALID_COLORS.has(body.color) ? body.color : existing.color;
   const nextCompleted =
     body.completed !== undefined ? (body.completed ? 1 : 0) : existing.completed;
   const now = new Date().toISOString();
 
   await c.env.DB.prepare(
     `UPDATE todos
-     SET title = ?, context_note = ?, transcript = ?, tags = ?, color = ?, completed = ?, updated_at = ?
+     SET title = ?, context_note = ?, transcript = ?, tags = ?, completed = ?, updated_at = ?
      WHERE id = ? AND space_key = ?`
   )
     .bind(
@@ -236,7 +224,6 @@ app.put('/api/todos/:id', async (c) => {
       nextContext,
       nextTranscript,
       nextTags,
-      nextColor,
       nextCompleted,
       now,
       id,
@@ -341,14 +328,13 @@ app.post('/api/todos/sync', async (c) => {
 
   const statements = body.todos.slice(0, 200).map((item, idx) =>
     c.env.DB.prepare(
-      `INSERT INTO todos (id, space_key, title, context_note, transcript, tags, color, completed, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO todos (id, space_key, title, context_note, transcript, tags, completed, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          title = excluded.title,
          context_note = excluded.context_note,
          transcript = excluded.transcript,
          tags = excluded.tags,
-         color = excluded.color,
          completed = excluded.completed,
          sort_order = excluded.sort_order,
          updated_at = excluded.updated_at
@@ -360,7 +346,6 @@ app.post('/api/todos/sync', async (c) => {
       item.contextNote ?? '',
       item.transcript ?? '',
       JSON.stringify(item.tags ?? []),
-      VALID_COLORS.has(item.color) ? item.color : 'amber',
       item.completed ? 1 : 0,
       item.order ?? idx,
       item.createdAt || new Date().toISOString(),

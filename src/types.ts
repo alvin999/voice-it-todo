@@ -1,5 +1,3 @@
-export type NoteColor = 'amber' | 'sage' | 'sky' | 'rose' | 'slate';
-
 export type InputParseMode = 'normal' | 'smart';
 
 export type NoteIconId =
@@ -38,7 +36,6 @@ export interface Todo {
   contextNote: string;
   transcript: string;
   tags: string[];
-  color: NoteColor;
   icon?: NoteIconId;
   completed: boolean;
   order: number;
@@ -51,7 +48,6 @@ export interface ParsedNoteInput {
   contextNote: string;
   transcript: string;
   tags: string[];
-  color?: NoteColor;
   icon?: NoteIconId;
 }
 

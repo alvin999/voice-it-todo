@@ -54,7 +54,6 @@ function getSeedTodos(): Todo[] {
       contextNote: '上次師傅說可能是 3M 款式，下週三前要拍外框標籤確認尺寸。',
       transcript: '下週三前要記得把冷氣濾網型號拍給水電師傅，上次他說好像是 3M 那款',
       tags: ['下週三', '生活'],
-      color: 'amber',
       completed: false,
       order: 0,
       createdAt: now,
@@ -66,7 +65,6 @@ function getSeedTodos(): Todo[] {
       contextNote: '直接口述完整來龍去脈，系統會自動幫你拆出「簡短標題」與「脈絡備註」，過幾天回來也不會忘記。',
       transcript: '',
       tags: ['技巧'],
-      color: 'sage',
       completed: false,
       order: 1,
       createdAt: now,
@@ -285,7 +283,6 @@ export function useTodoStore() {
         contextNote: item.contextNote,
         transcript: item.transcript,
         tags: item.tags,
-        color: 'amber',
         icon: respectManualIcon ? icon : (item.icon ?? icon),
         completed: false,
         order: idx,
@@ -330,7 +327,7 @@ export function useTodoStore() {
   const updateTodo = useCallback(
     async (
       id: string,
-      patch: Partial<Pick<Todo, 'title' | 'contextNote' | 'tags' | 'color' | 'icon' | 'completed'>>
+      patch: Partial<Pick<Todo, 'title' | 'contextNote' | 'tags' | 'icon' | 'completed'>>
     ) => {
       const now = new Date().toISOString();
       setTodos((prev) =>
