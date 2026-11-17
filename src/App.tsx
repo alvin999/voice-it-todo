@@ -39,12 +39,18 @@ import {
 } from 'lucide-react';
 import { ByokModal } from './components/ByokModal';
 import { IconPickerPopover } from './components/IconPickerPopover';
+import { IconTemplateModal } from './components/IconTemplateModal';
 import { useByokConfig } from './hooks/useByokConfig';
 import { isSeedTodo, useTodoStore } from './hooks/useTodoStore';
 import { useVoiceInput } from './hooks/useVoiceInput';
 import type { FilterType, InputParseMode, NoteIconId, Todo } from './types';
 import { PROVIDER_PRESETS } from './utils/byokAi';
-import { getNoteIconMeta, NOTE_ICON_META } from './utils/noteIcons';
+import {
+  buildFieldSkeleton,
+  getIconFieldConfig,
+  getNoteIconMeta,
+  NOTE_ICON_META,
+} from './utils/noteIcons';
 import './App.css';
 
 function formatRelativeDate(iso: string): string {
@@ -100,11 +106,24 @@ function SortableNoteCard({
   const iconMeta = getNoteIconMeta(todo.icon);
 
   const handleSaveEdit = () => {
+    // 檢查編輯內容中是否包含 #標籤 並提煉至 tags
+    const extractedTags = [...todo.tags];
+    const tagMatches = `${editTitle} ${editContext}`.match(/[#＃]([^\s#＃,，.。;；]+)/g);
+    if (tagMatches) {
+      for (const m of tagMatches) {
+        const clean = m.replace(/^[#＃]/, '').trim();
+        if (clean && !extractedTags.includes(clean)) {
+          extractedTags.push(clean);
+        }
+      }
+    }
+
     const nextTitle = editTitle.trim();
     if (!nextTitle) return;
     onUpdate(todo.id, {
       title: nextTitle,
       contextNote: editContext.trim(),
+      tags: extractedTags,
     });
     setEditing(false);
   };
@@ -162,12 +181,12 @@ function SortableNoteCard({
           }}
         >
           <div className="note-title-row">
-            <IconPickerPopover
-              value={todo.icon}
-              onChange={(icon) => onUpdate(todo.id, { icon })}
-              onOpenChange={setIconPickerOpen}
-              triggerLabel={`選擇圖示（目前：${iconMeta.label}）`}
-            />
+          <IconPickerPopover
+            value={todo.icon}
+            onChange={(icon) => onUpdate(todo.id, { icon })}
+            onOpenChange={setIconPickerOpen}
+            triggerLabel={`選擇圖示（目前：${iconMeta.label}）`}
+          />
             <div className="note-title">{todo.title}</div>
           </div>
 
@@ -342,10 +361,25 @@ export function App() {
   const [parseMode, setParseMode] = useState<InputParseMode>('smart');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [usedVoiceInDraft, setUsedVoiceInDraft] = useState(false);
+
+  // 即時擷取輸入框中的 #標籤 以進行視覺渲染
+  const liveDraftHashtags = useMemo(() => {
+    const combined = `${draftTitle} ${draftContext}`;
+    const matches = combined.match(/[#＃]([^\s#＃,，.。;；]+)/g);
+    if (!matches) return [];
+    const unique = new Set<string>();
+    for (const m of matches) {
+      const clean = m.replace(/^[#＃]/, '').trim();
+      if (clean) unique.add(clean);
+    }
+    return Array.from(unique);
+  }, [draftTitle, draftContext]);
   const [filter, setFilter] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [byokModalOpen, setByokModalOpen] = useState(false);
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [, setTemplateUpdateTick] = useState(0);
   const [aiNotice, setAiNotice] = useState<string | null>(null);
   const [recentlyDeleted, setRecentlyDeleted] = useState<Todo | null>(null);
   const undoTimeoutRef = useRef<number | null>(null);
@@ -471,6 +505,18 @@ export function App() {
 
     const reordered = arrayMove(todos, oldIndex, newIndex);
     void reorderTodos(reordered);
+  };
+
+  const handleSelectIcon = (icon: NoteIconId) => {
+    setSelectedIcon(icon);
+    setHasManualIcon(true);
+
+    // 若該圖示有啟用自訂欄位範本，且目前脈絡備註是空白，自動填入欄位骨架
+    const config = getIconFieldConfig(icon);
+    if (config.enabled && config.fields.length > 0 && !draftContext.trim()) {
+      const skeleton = buildFieldSkeleton(config.fields);
+      setDraftContext(skeleton);
+    }
   };
 
   const handleCopyShareLink = async () => {
@@ -667,6 +713,16 @@ export function App() {
               }}
               rows={3}
             />
+
+            {liveDraftHashtags.length > 0 && (
+              <div className="composer-hashtag-preview">
+                {liveDraftHashtags.map((tag) => (
+                  <span key={tag} className="tag-pill composer-hashtag-pill">
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           <button
@@ -708,10 +764,8 @@ export function App() {
           <div className="composer-options">
             <IconPickerPopover
               value={selectedIcon}
-              onChange={(icon) => {
-                setSelectedIcon(icon);
-                setHasManualIcon(true);
-              }}
+              onChange={handleSelectIcon}
+              onOpenTemplateModal={() => setTemplateModalOpen(true)}
               triggerClassName="composer-icon-btn"
               showLabelInTrigger
               triggerLabel={
@@ -1013,6 +1067,12 @@ export function App() {
         onUnlock={byok.unlockWithPassword}
         onLock={byok.lockSession}
         onClearKey={byok.clearApiKey}
+      />
+
+      <IconTemplateModal
+        open={templateModalOpen}
+        onClose={() => setTemplateModalOpen(false)}
+        onTemplatesUpdated={() => setTemplateUpdateTick((t) => t + 1)}
       />
 
       {recentlyDeleted && (

@@ -1,5 +1,5 @@
 import type { ByokConfig, ByokProvider, ParsedNoteInput } from '../types';
-import { isNoteIconId, NOTE_ICON_META } from './noteIcons';
+import { isNoteIconId, loadIconTemplates, NOTE_ICON_META } from './noteIcons';
 
 export interface ProviderPreset {
   label: string;
@@ -167,13 +167,32 @@ export async function fetchAvailableModels(params: {
 
 const ICON_GUIDE = NOTE_ICON_META.map((item) => `${item.id}(${item.hint})`).join('、');
 
-const SYSTEM_PROMPT = [
-  '你是繁體中文（台灣用語）待辦事項整理助手。請去除「那個、就是、嗯」等口語贅字，將使用者的口語或隨手記拆解為結構化待辦。',
-  '若輸入包含多件彼此獨立的事，請拆成多筆（最多 5 筆）；若只有一件事則輸出 1 筆。',
-  '只輸出合法 JSON，不要任何額外文字或 markdown，格式為：',
-  '{"items":[{"title":"精簡行動標題(15字內)","contextNote":"補充脈絡與原因細節，避免過幾天忘記","tags":["最多2個簡短時間或分類標籤"],"icon":"圖示ID"}]}',
-  `icon 只能從以下 ID 擇一：${ICON_GUIDE}。`,
-].join('\n');
+export function buildSystemPrompt(): string {
+  const templates = loadIconTemplates();
+  const rulesWithFields: string[] = [];
+
+  for (const [id, config] of Object.entries(templates)) {
+    if (config?.enabled && config.fields.length > 0) {
+      const fieldDesc = config.fields.map((f) => `${f}：...`).join(' / ');
+      rulesWithFields.push(`- 若 icon 為 "${id}"，contextNote 請整理為：${fieldDesc}`);
+    }
+  }
+
+  const fieldInstructions =
+    rulesWithFields.length > 0
+      ? `\n自訂圖示欄位需求：\n${rulesWithFields.join('\n')}`
+      : '';
+
+  return [
+    '你是繁體中文待辦事項整理助手，請將使用者的輸入整理為結構化待辦清單。',
+    '只輸出合法 JSON，格式為：',
+    '{"items":[{"title":"行動標題","contextNote":"脈絡備註細節","tags":["標籤"],"icon":"圖示ID"}]}',
+    `icon 請從以下 ID 擇一：${ICON_GUIDE}。`,
+    fieldInstructions,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
 
 interface RawAiItem {
   title?: unknown;
@@ -193,7 +212,7 @@ function normalizeAiItem(item: RawAiItem, rawText: string): ParsedNoteInput | nu
     contextNote: typeof item.contextNote === 'string' ? item.contextNote.trim() : '',
     transcript: rawText,
     tags: Array.isArray(item.tags)
-      ? item.tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 3)
+      ? item.tags.map((t) => String(t).trim()).filter(Boolean)
       : [],
     icon,
   };
@@ -207,8 +226,7 @@ function extractParsedItems(text: string, rawText: string): ParsedNoteInput[] {
     const candidates = Array.isArray(parsed.items) ? parsed.items : [parsed];
     return candidates
       .map((item) => normalizeAiItem(item, rawText))
-      .filter((item): item is ParsedNoteInput => item !== null)
-      .slice(0, 5);
+      .filter((item): item is ParsedNoteInput => item !== null);
   } catch {
     return [];
   }
@@ -228,6 +246,8 @@ export async function parseNoteWithByok(
 
   let rawResponseText = '';
 
+  const systemPrompt = buildSystemPrompt();
+
   if (config.provider === 'gemini') {
     const url = `${baseUrl}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(
       config.apiKey.trim()
@@ -236,7 +256,7 @@ export async function parseNoteWithByok(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        systemInstruction: { parts: [{ text: systemPrompt }] },
         contents: [{ role: 'user', parts: [{ text: rawText }] }],
         generationConfig: { temperature: 0.2, maxOutputTokens: 512 },
       }),
@@ -259,7 +279,7 @@ export async function parseNoteWithByok(
         model,
         max_tokens: 512,
         temperature: 0.2,
-        system: SYSTEM_PROMPT,
+        system: systemPrompt,
         messages: [{ role: 'user', content: rawText }],
       }),
     });
@@ -291,7 +311,7 @@ export async function parseNoteWithByok(
         temperature: 0.2,
         max_tokens: 512,
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'system', content: systemPrompt },
           { role: 'user', content: rawText },
         ],
       }),

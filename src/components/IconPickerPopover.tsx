@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SlidersHorizontal } from 'lucide-react';
 import type { NoteIconId } from '../types';
-import { getNoteIconMeta, NOTE_ICON_META } from '../utils/noteIcons';
+import { getIconFieldConfig, getNoteIconMeta, NOTE_ICON_META } from '../utils/noteIcons';
 
 interface IconPickerPopoverProps {
   value?: NoteIconId;
   onChange: (icon: NoteIconId) => void;
   onOpenChange?: (open: boolean) => void;
+  onOpenTemplateModal?: () => void;
   triggerClassName?: string;
   triggerLabel?: string;
   showLabelInTrigger?: boolean;
@@ -15,6 +17,7 @@ export function IconPickerPopover({
   value,
   onChange,
   onOpenChange,
+  onOpenTemplateModal,
   triggerClassName = 'note-icon-badge',
   triggerLabel,
   showLabelInTrigger = false,
@@ -79,6 +82,8 @@ export function IconPickerPopover({
             {NOTE_ICON_META.map((item) => {
               const ItemIcon = item.Icon;
               const isActive = currentMeta.id === item.id;
+              const hasCustomField = getIconFieldConfig(item.id).enabled;
+
               return (
                 <button
                   key={item.id}
@@ -86,7 +91,7 @@ export function IconPickerPopover({
                   role="menuitemradio"
                   aria-checked={isActive}
                   className={`icon-popover-item ${isActive ? 'is-active' : ''}`}
-                  title={`${item.label}（${item.hint}）`}
+                  title={`${item.label}（${item.hint}）${hasCustomField ? ' [已啟用欄位範本]' : ''}`}
                   onClick={() => {
                     onChange(item.id);
                     updateOpen(false);
@@ -98,6 +103,37 @@ export function IconPickerPopover({
               );
             })}
           </div>
+
+          {onOpenTemplateModal && (
+            <div
+              style={{
+                borderTop: '1px solid var(--border-color, #e2e8f0)',
+                padding: '8px 10px 4px 10px',
+                marginTop: 6,
+              }}
+            >
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  padding: '6px 10px',
+                  fontSize: '0.8rem',
+                }}
+                onClick={() => {
+                  updateOpen(false);
+                  onOpenTemplateModal();
+                }}
+              >
+                <SlidersHorizontal size={13} />
+                <span>設定圖示專屬欄位範本...</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

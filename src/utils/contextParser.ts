@@ -27,25 +27,37 @@ const CATEGORY_RULES: Array<{ keywords: RegExp; tag: string }> = [
  * 讓列表保持清爽，同時避免「過幾天忘記當初為什麼記這件事」。
  */
 export function parseVoiceOrTextNote(raw: string, isVoice = false): ParsedNoteInput {
+  // 提取手動 hashtag (#標籤 或 ＃標籤)
+  const manualTags: string[] = [];
+  const matches = raw.match(/[#＃]([^\s#＃,，.。;；]+)/g);
+  if (matches) {
+    for (const m of matches) {
+      const tag = m.replace(/^[#＃]/, '').trim();
+      if (tag && !manualTags.includes(tag)) {
+        manualTags.push(tag);
+      }
+    }
+  }
+
   const cleaned = raw.trim().replace(/\s+/g, ' ');
-  if (!cleaned) {
+  if (!cleaned && manualTags.length === 0) {
     return { title: '', contextNote: '', transcript: '', tags: [] };
   }
 
-  const tags: string[] = [];
+  const tags: string[] = [...manualTags];
 
   for (const { regex } of TIME_PATTERNS) {
     const match = cleaned.match(regex);
     if (match?.[1] && !tags.includes(match[1])) {
       tags.push(match[1]);
-      if (tags.length >= 2) break;
+      if (tags.length >= 3) break;
     }
   }
 
   for (const rule of CATEGORY_RULES) {
     if (rule.keywords.test(cleaned) && !tags.includes(rule.tag)) {
       tags.push(rule.tag);
-      if (tags.length >= 3) break;
+      if (tags.length >= 4) break;
     }
   }
 
@@ -55,12 +67,12 @@ export function parseVoiceOrTextNote(raw: string, isVoice = false): ParsedNoteIn
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean);
-    const title = lines[0] ?? cleaned;
+    const title = lines[0] ?? (cleaned || '無標題');
     const contextNote = lines.slice(1).join('\n');
     return {
       title,
       contextNote,
-      transcript: isVoice ? cleaned : '',
+      transcript: isVoice ? raw.trim() : '',
       tags,
     };
   }
@@ -86,7 +98,7 @@ export function parseVoiceOrTextNote(raw: string, isVoice = false): ParsedNoteIn
     return {
       title: first,
       contextNote: rest,
-      transcript: isVoice ? cleaned : cleaned.length > 24 ? cleaned : '',
+      transcript: isVoice ? raw.trim() : raw.trim().length > 24 ? raw.trim() : '',
       tags,
     };
   }
@@ -96,7 +108,7 @@ export function parseVoiceOrTextNote(raw: string, isVoice = false): ParsedNoteIn
     return {
       title: `${cleaned.slice(0, 24)}…`,
       contextNote: cleaned,
-      transcript: isVoice ? cleaned : '',
+      transcript: isVoice ? raw.trim() : '',
       tags,
     };
   }
@@ -104,7 +116,7 @@ export function parseVoiceOrTextNote(raw: string, isVoice = false): ParsedNoteIn
   return {
     title: cleaned,
     contextNote: '',
-    transcript: isVoice ? cleaned : '',
+    transcript: isVoice ? raw.trim() : '',
     tags,
   };
 }
