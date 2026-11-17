@@ -38,6 +38,12 @@ export const PROVIDER_PRESETS: Record<ByokProvider, ProviderPreset> = {
     requiresKey: true,
     placeholderKey: 'sk-ant-...',
   },
+  openrouter: {
+    label: 'OpenRouter',
+    defaultBaseUrl: 'https://openrouter.ai/api/v1',
+    requiresKey: true,
+    placeholderKey: 'sk-or-v1-...',
+  },
   ollama: {
     label: 'Ollama（本機）',
     defaultBaseUrl: 'http://localhost:11434/v1',
@@ -125,10 +131,16 @@ export async function fetchAvailableModels(params: {
     return results;
   }
 
-  // OpenAI / Groq / Ollama (皆相容 /models)
+  // OpenAI / Groq / OpenRouter / Ollama (皆相容 /models)
   const headers: Record<string, string> = {};
   if (trimmedKey) {
     headers.Authorization = `Bearer ${trimmedKey}`;
+  }
+  if (provider === 'openrouter') {
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      headers['HTTP-Referer'] = window.location.origin;
+    }
+    headers['X-Title'] = 'Voice-it Todo';
   }
   const res = await fetch(`${cleanBaseUrl}/models`, {
     method: 'GET',
@@ -139,7 +151,7 @@ export async function fetchAvailableModels(params: {
     throw new Error(`無法取得 ${preset.label} 模型清單 (${res.status})`);
   }
   const data = (await res.json()) as {
-    data?: Array<{ id?: string }>;
+    data?: Array<{ id?: string; name?: string }>;
   };
   const seen = new Set<string>();
   const results: DetectedModel[] = [];
@@ -147,7 +159,8 @@ export async function fetchAvailableModels(params: {
     const id = item.id?.trim() ?? '';
     if (!id || seen.has(id)) continue;
     seen.add(id);
-    results.push({ id, label: id });
+    const label = item.name && item.name !== id ? `${item.name} (${id})` : id;
+    results.push({ id, label });
   }
   return results.sort((a, b) => a.id.localeCompare(b.id));
 }
@@ -256,12 +269,18 @@ export async function parseNoteWithByok(
     };
     rawResponseText = data.content?.find((b) => b.type === 'text')?.text ?? '';
   } else {
-    // OpenAI / Groq / Ollama (皆相容 /chat/completions)
+    // OpenAI / Groq / OpenRouter / Ollama (皆相容 /chat/completions)
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
     if (config.apiKey.trim()) {
       headers.Authorization = `Bearer ${config.apiKey.trim()}`;
+    }
+    if (config.provider === 'openrouter') {
+      if (typeof window !== 'undefined' && window.location?.origin) {
+        headers['HTTP-Referer'] = window.location.origin;
+      }
+      headers['X-Title'] = 'Voice-it Todo';
     }
 
     const res = await fetch(`${baseUrl}/chat/completions`, {

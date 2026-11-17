@@ -19,7 +19,14 @@ interface ByokModalProps {
   onClearKey: () => void;
 }
 
-const PROVIDERS: ByokProvider[] = ['gemini', 'groq', 'openai', 'claude', 'ollama'];
+const PROVIDERS: ByokProvider[] = [
+  'gemini',
+  'groq',
+  'openai',
+  'claude',
+  'openrouter',
+  'ollama',
+];
 
 const STORAGE_MODES: Array<{
   value: KeyStorageMode;
@@ -39,7 +46,7 @@ const STORAGE_MODES: Array<{
   {
     value: 'plain',
     label: '無加密',
-    desc: '明文存於本機 localStorage（僅建議本地開發測試使用）',
+    desc: '明文存於本機 localStorage',
   },
 ];
 
@@ -323,20 +330,23 @@ export function ByokModal({
               </div>
             )}
 
-            <div className="field-group">
-              <label className="field-label" htmlFor="byok-baseurl-input">
-                API Endpoint Base URL
-              </label>
-              <input
-                id="byok-baseurl-input"
-                className="field-input"
-                style={{ width: '100%' }}
-                value={draft.baseUrl}
-                onChange={(e) =>
-                  setDraft((prev) => ({ ...prev, baseUrl: e.target.value }))
-                }
-              />
-            </div>
+            {draft.provider === 'ollama' && (
+              <div className="field-group">
+                <label className="field-label" htmlFor="byok-baseurl-input">
+                  Ollama 伺服器網址 (Base URL)
+                </label>
+                <input
+                  id="byok-baseurl-input"
+                  className="field-input"
+                  style={{ width: '100%' }}
+                  value={draft.baseUrl}
+                  onChange={(e) =>
+                    setDraft((prev) => ({ ...prev, baseUrl: e.target.value }))
+                  }
+                  placeholder="http://localhost:11434/v1"
+                />
+              </div>
+            )}
 
             <div className="field-group">
               <label className="field-label" htmlFor="byok-model-select">

@@ -19,7 +19,7 @@ export type NoteIconId =
 
 export type FilterType = 'all' | 'active' | 'completed';
 
-export type ByokProvider = 'gemini' | 'groq' | 'openai' | 'claude' | 'ollama';
+export type ByokProvider = 'gemini' | 'groq' | 'openai' | 'claude' | 'openrouter' | 'ollama';
 
 export type KeyStorageMode = 'transparent' | 'password' | 'plain';
 
