@@ -22,23 +22,27 @@
   gap: 14px;
 }
 
-/* 硃砂方印效果 (Seal Style Logo) */
+/* 品牌識別圖示 (Brand Logo - 天青玉階玉珠印) */
 .brand-mark {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-sm);
-  background: rgba(184, 64, 52, 0.06);
-  color: var(--vermilion);
-  border: 1.5px solid var(--vermilion);
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
   display: grid;
   place-items: center;
-  box-shadow: inset 0 0 0 1px rgba(184, 64, 52, 0.15);
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: visible;
+  cursor: pointer;
 }
 
 .brand-mark:hover {
-  background: rgba(184, 64, 52, 0.12);
-  transform: scale(1.04);
+  transform: scale(1.06);
+}
+
+.brand-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 10px rgba(27, 48, 50, 0.2));
 }
 
 .brand-title {

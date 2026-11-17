@@ -34,7 +34,6 @@ import {
   Plus,
   Search,
   Sparkles,
-  StickyNote,
   Trash2,
   X,
 } from 'lucide-react';
@@ -523,7 +522,7 @@ export function App() {
       <header className="top-bar">
         <div className="brand">
           <div className="brand-mark">
-            <StickyNote size={20} />
+            <img src="/favicon.svg" alt="大方無虞 VoiceItTodo" className="brand-logo-img" />
           </div>
           <div>
             <h1 className="brand-title">大方無虞 VoiceItTodo</h1>

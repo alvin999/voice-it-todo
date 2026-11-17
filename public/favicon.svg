@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- 桌面級柔和自然多層陰影 -->
+    <filter id="desktop-shadow-circle" x="-20%" y="-15%" width="140%" height="140%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="36" stdDeviation="40" flood-color="#0a1617" flood-opacity="0.45" />
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.25" />
+    </filter>
+
+    <!-- 宋瓷天青主基底漸層 -->
+    <linearGradient id="celadon-gradient-c2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3d6669" />
+      <stop offset="45%" stop-color="#2a474a" />
+      <stop offset="100%" stop-color="#16292b" />
+    </linearGradient>
+
+    <!-- 頂部環境微光反射 -->
+    <linearGradient id="specular-c2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.28" />
+      <stop offset="25%" stop-color="#ffffff" stop-opacity="0.04" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.2" />
+    </linearGradient>
+
+    <!-- 硃砂印泥珠光漸層 -->
+    <linearGradient id="vermilion-bead" x1="20%" y1="20%" x2="80%" y2="80%">
+      <stop offset="0%" stop-color="#ff6050" />
+      <stop offset="40%" stop-color="#cf4436" />
+      <stop offset="100%" stop-color="#8a241b" />
+    </linearGradient>
+
+    <!-- 天青同心聲波漸層 -->
+    <linearGradient id="ripple-glow-c2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a8e3dc" />
+      <stop offset="50%" stop-color="#6bb8ae" />
+      <stop offset="100%" stop-color="#3b7d74" />
+    </linearGradient>
+
+    <!-- 硃砂珠立體深度 -->
+    <filter id="bead-depth" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0b1718" flood-opacity="0.5" />
+      <feDropShadow dx="-2" dy="-3" stdDeviation="3" flood-color="#ffffff" flood-opacity="0.45" />
+    </filter>
+  </defs>
+
+  <!-- 桌面版 Squircle 完整圓融天青玉基底 (大方無隅) -->
+  <g filter="url(#desktop-shadow-circle)">
+    <rect x="92" y="92" width="840" height="840" rx="190" ry="190" fill="url(#celadon-gradient-c2)" />
+    <rect x="92" y="92" width="840" height="840" rx="190" ry="190" fill="url(#specular-c2)" />
+    <rect x="93" y="93" width="838" height="838" rx="189" ry="189" fill="none" stroke="#a8e3dc" stroke-opacity="0.25" stroke-width="2.5" />
+  </g>
+
+  <!-- 純粹聲波漣漪群 (居中 512, 512) -->
+  <g>
+    <!-- 外圈 3 (遠聲悠揚) -->
+    <circle cx="512" cy="512" r="230"
+            fill="none" stroke="url(#ripple-glow-c2)" stroke-width="14" stroke-linecap="round" stroke-opacity="0.3" stroke-dasharray="28 20" />
+
+    <!-- 中圈 2 (聲波擴散) -->
+    <circle cx="512" cy="512" r="160"
+            fill="none" stroke="url(#ripple-glow-c2)" stroke-width="22" stroke-linecap="round" stroke-opacity="0.6" />
+
+    <!-- 內圈 1 (初音之聲) -->
+    <circle cx="512" cy="512" r="95"
+            fill="none" stroke="url(#ripple-glow-c2)" stroke-width="28" stroke-linecap="round" stroke-opacity="0.9" />
+  </g>
+
+  <!-- 中心發聲源：硃砂玉珠 (點睛定心) -->
+  <g filter="url(#bead-depth)">
+    <circle cx="512" cy="512" r="38" fill="url(#vermilion-bead)" />
+    <!-- 硃砂珠頂部高光 -->
+    <circle cx="498" cy="498" r="8" fill="#ffffff" fill-opacity="0.65" />
+  </g>
+</svg>
