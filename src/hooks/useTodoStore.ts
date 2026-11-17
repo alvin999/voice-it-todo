@@ -45,28 +45,66 @@ function getInitialApiUrl(): string {
   return (import.meta.env.VITE_API_URL as string | undefined)?.trim() ?? '';
 }
 
+const SEED_TODO_ID_PREFIX = 'demo-guide-';
+
+export function isSeedTodo(todo: Pick<Todo, 'id'>): boolean {
+  return todo.id.startsWith(SEED_TODO_ID_PREFIX);
+}
+
 function getSeedTodos(): Todo[] {
   const now = new Date().toISOString();
+  const suffix = () => crypto.randomUUID().slice(0, 8);
   return [
     {
-      id: crypto.randomUUID(),
-      title: '拍冷氣濾網型號給水電師傅',
-      contextNote: '上次師傅說可能是 3M 款式，下週三前要拍外框標籤確認尺寸。',
-      transcript: '下週三前要記得把冷氣濾網型號拍給水電師傅，上次他說好像是 3M 那款',
-      tags: ['下週三', '生活'],
+      id: `${SEED_TODO_ID_PREFIX}1-${suffix()}`,
+      title: '點這張卡片展開，看看語音逐字稿怎麼被整理',
+      contextNote:
+        '隨口說出完整來龍去脈，系統會自動提煉精簡標題與脈絡備註，主畫面保持清爽，需要時再展開查看原始逐字稿。',
+      transcript:
+        '那個…幫我記一下，等一下要試試看點擊卡片展開的功能，聽說講話太長的時候，原本的逐字稿也會一起留著不會不見對吧？',
+      tags: ['① 語音拆解', '點擊展開'],
+      icon: 'lightbulb',
       completed: false,
       order: 0,
       createdAt: now,
       updatedAt: now,
     },
     {
-      id: crypto.randomUUID(),
-      title: '試試看右上角或輸入框的語音按鈕',
-      contextNote: '直接口述完整來龍去脈，系統會自動幫你拆出「簡短標題」與「脈絡備註」，過幾天回來也不會忘記。',
+      id: `${SEED_TODO_ID_PREFIX}2-${suffix()}`,
+      title: '點左側圖示更換分類，或按住手把上下拖曳排序',
+      contextNote:
+        '點擊標題旁的圖示可切換 13 種情境圖示；在「全部」且無搜尋關鍵字時，按住最左側手把即可拖曳調整順序，右側也能編輯或刪除。',
       transcript: '',
-      tags: ['技巧'],
+      tags: ['② 圖示與排序', '動手試試'],
+      icon: 'wrench',
       completed: false,
       order: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: `${SEED_TODO_ID_PREFIX}3-${suffix()}`,
+      title: '設定自備 AI 金鑰，解鎖「智慧解析」自動分類',
+      contextNote:
+        '未設定金鑰時採用本機規則「一般整理」；點擊上方金鑰設定（支援 Gemini、OpenAI、Claude、Groq 或本機 Ollama），即可自動拆解重點並配對圖示與標籤。',
+      transcript: '',
+      tags: ['③ 智慧解析', 'BYOK'],
+      icon: 'briefcase',
+      completed: false,
+      order: 2,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: `${SEED_TODO_ID_PREFIX}4-${suffix()}`,
+      title: '資料預設存在本機，免登入即可離線使用',
+      contextNote:
+        '所有待辦優先儲存在瀏覽器本機；若需跨裝置同步或搭配 iOS 捷徑寫入，可設定 Cloudflare Worker 與 Space Key。（試著切換上方「全部／進行中／已完成」看看篩選效果）',
+      transcript: '',
+      tags: ['④ 本機優先', '雲端同步'],
+      icon: 'calendar',
+      completed: true,
+      order: 3,
       createdAt: now,
       updatedAt: now,
     },
@@ -458,6 +496,52 @@ export function useTodoStore() {
     [normalizedApiBase, spaceKey]
   );
 
+  const loadSeedTodos = useCallback(async () => {
+    const seeds = getSeedTodos();
+    setTodos((prev) => (prev.length === 0 ? seeds : prev));
+
+    if (normalizedApiBase && todosRef.current.length === 0) {
+      try {
+        await Promise.all(
+          seeds.map((item) =>
+            fetch(`${normalizedApiBase}/api/todos`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Space-Key': spaceKey,
+              },
+              body: JSON.stringify(item),
+            })
+          )
+        );
+      } catch {
+        setSyncStatus((prev) => ({ ...prev, error: '範例已載入本機，雲端同步稍後重試' }));
+      }
+    }
+  }, [normalizedApiBase, spaceKey]);
+
+  const clearSeedTodos = useCallback(async () => {
+    const seedIds = todosRef.current.filter(isSeedTodo).map((t) => t.id);
+    if (seedIds.length === 0) return;
+
+    setTodos((prev) => prev.filter((item) => !isSeedTodo(item)));
+
+    if (normalizedApiBase) {
+      try {
+        await Promise.all(
+          seedIds.map((id) =>
+            fetch(`${normalizedApiBase}/api/todos/${id}`, {
+              method: 'DELETE',
+              headers: { 'X-Space-Key': spaceKey },
+            })
+          )
+        );
+      } catch {
+        setSyncStatus((prev) => ({ ...prev, error: '已清除本機範例，雲端同步稍後重試' }));
+      }
+    }
+  }, [normalizedApiBase, spaceKey]);
+
   return {
     todos,
     spaceKey,
@@ -473,5 +557,7 @@ export function useTodoStore() {
     deleteTodo,
     restoreTodo,
     reorderTodos,
+    loadSeedTodos,
+    clearSeedTodos,
   };
 }

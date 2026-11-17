@@ -30,6 +30,13 @@ export interface ByokConfig {
   storageMode: KeyStorageMode;
 }
 
+export interface IconFieldConfig {
+  enabled: boolean;
+  fields: string[];
+}
+
+export type IconTemplateMap = Partial<Record<NoteIconId, IconFieldConfig>>;
+
 export interface Todo {
   id: string;
   title: string;

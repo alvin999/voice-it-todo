@@ -40,7 +40,7 @@ import {
 import { ByokModal } from './components/ByokModal';
 import { IconPickerPopover } from './components/IconPickerPopover';
 import { useByokConfig } from './hooks/useByokConfig';
-import { useTodoStore } from './hooks/useTodoStore';
+import { isSeedTodo, useTodoStore } from './hooks/useTodoStore';
 import { useVoiceInput } from './hooks/useVoiceInput';
 import type { FilterType, InputParseMode, NoteIconId, Todo } from './types';
 import { PROVIDER_PRESETS } from './utils/byokAi';
@@ -329,6 +329,8 @@ export function App() {
     deleteTodo,
     restoreTodo,
     reorderTodos,
+    loadSeedTodos,
+    clearSeedTodos,
   } = useTodoStore();
 
   const [draftTitle, setDraftTitle] = useState('');
@@ -396,6 +398,8 @@ export function App() {
     () => todos.filter((t) => !t.completed).length,
     [todos]
   );
+
+  const hasSeedTodos = useMemo(() => todos.some(isSeedTodo), [todos]);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -820,10 +824,38 @@ export function App() {
         </div>
       </div>
 
+      {hasSeedTodos && (
+        <div className="seed-banner" role="status">
+          <div className="seed-banner-text">
+            <Sparkles size={14} />
+            <span>目前包含功能教學範例，歡迎點擊展開、更換圖示或拖曳排序體驗。</span>
+          </div>
+          <button
+            type="button"
+            className="seed-banner-clear"
+            onClick={clearSeedTodos}
+          >
+            清除教學範例
+          </button>
+        </div>
+      )}
+
       {filteredTodos.length === 0 ? (
         <div className="empty-state">
-          <strong>目前沒有符合條件的便利貼</strong>
+          <strong>
+            {todos.length === 0 ? '目前還沒有待辦便利貼' : '目前沒有符合條件的便利貼'}
+          </strong>
           <p>按一下輸入框右側麥克風直接口述，系統會自動幫你保留完整脈絡。</p>
+          {todos.length === 0 && (
+            <button
+              type="button"
+              className="empty-seed-btn"
+              onClick={loadSeedTodos}
+            >
+              <Sparkles size={14} />
+              載入教學範例
+            </button>
+          )}
         </div>
       ) : (
         <DndContext
