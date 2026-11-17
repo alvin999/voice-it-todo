@@ -130,7 +130,7 @@ export function IconPickerPopover({
                 }}
               >
                 <SlidersHorizontal size={13} />
-                <span>設定圖示專屬欄位範本...</span>
+                <span>設定分類欄位範本...</span>
               </button>
             </div>
           )}

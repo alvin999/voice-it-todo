@@ -88,7 +88,7 @@ export function IconTemplateModal({
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <SlidersHorizontal size={18} />
             <h2 id="icon-template-modal-title" style={{ margin: 0, fontSize: '1.1rem' }}>
-              自訂圖示專屬欄位範本
+              分類欄位範本
             </h2>
           </div>
           <button
@@ -102,7 +102,7 @@ export function IconTemplateModal({
         </div>
 
         <p className="field-help" style={{ marginBottom: 14 }}>
-          開啟後，選擇該圖示時會自動將欄位填入脈絡備註；同時會連動告知 AI「智慧解析」嚴格依照該欄位格式整理。
+          開啟後，選取此圖示會自動帶入設定好的欄位；AI 智慧解析時也會依照此格式為你整理內容。
         </p>
 
         {/* 圖示橫向切換列 */}
