@@ -64,3 +64,10 @@ export interface SyncStatus {
   lastSyncedAt: string | null;
   error: string | null;
 }
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  avatarUrl: string;
+}

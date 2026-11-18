@@ -22,16 +22,18 @@ import {
   ChevronDown,
   ChevronUp,
   Cloud,
-  Copy,
   Download,
   GripVertical,
   HardDrive,
   KeyRound,
   Lock,
+  LogIn,
+  LogOut,
   Mic,
   MicOff,
   Pencil,
   Plus,
+  RefreshCw,
   Search,
   Sparkles,
   Trash2,
@@ -335,11 +337,11 @@ function SortableNoteCard({
 export function App() {
   const {
     todos,
-    spaceKey,
-    apiUrl,
+    user,
+    authLoading,
     syncStatus,
-    setApiUrl,
-    setSpaceKey,
+    loginWithGoogle,
+    logout,
     fetchFromCloud,
     pushAllToCloud,
     addTodo,
@@ -391,10 +393,6 @@ export function App() {
   const undoTimeoutRef = useRef<number | null>(null);
 
   const byok = useByokConfig();
-
-  const [spaceInput, setSpaceInput] = useState(spaceKey);
-  const [apiInput, setApiInput] = useState(apiUrl);
-  const [copiedHint, setCopiedHint] = useState(false);
 
   const voice = useVoiceInput({
     lang: 'zh-TW',
@@ -565,14 +563,6 @@ export function App() {
     contextInputRef.current?.focus();
   };
 
-  const handleCopyShareLink = async () => {
-    const url = new URL(window.location.href);
-    url.searchParams.set('space', spaceKey);
-    await navigator.clipboard.writeText(url.toString());
-    setCopiedHint(true);
-    setTimeout(() => setCopiedHint(false), 1800);
-  };
-
   const handleExportJson = () => {
     const blob = new Blob([JSON.stringify(todos, null, 2)], {
       type: 'application/json',
@@ -580,26 +570,9 @@ export function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `voiceittodo-${spaceKey}.json`;
+    a.download = `voiceittodo-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  };
-
-  const [spaceError, setSpaceError] = useState<string | null>(null);
-
-  const handleSaveSyncSettings = async () => {
-    setSpaceError(null);
-    const cleaned = spaceInput.trim();
-    if (!/^[a-zA-Z0-9_-]{4,64}$/.test(cleaned)) {
-      setSpaceError('空間識別碼必須為 4 至 64 個英數字、減號或底線字元');
-      return;
-    }
-    setSpaceKey(cleaned);
-    setApiUrl(apiInput);
-    if (apiInput.trim()) {
-      await fetchFromCloud(apiInput.trim().replace(/\/+$/, ''), cleaned);
-    }
-    setSyncModalOpen(false);
   };
 
   useEffect(() => {
@@ -647,19 +620,17 @@ export function App() {
             type="button"
             className={`sync-pill ${syncStatus.mode === 'cloud' ? 'is-cloud' : ''} ${syncStatus.error ? 'has-error' : ''
               }`}
-            onClick={() => {
-              setSpaceInput(spaceKey);
-              setApiInput(apiUrl);
-              setSyncModalOpen(true);
-            }}
+            onClick={() => setSyncModalOpen(true)}
           >
             {syncStatus.mode === 'cloud' ? <Cloud size={15} /> : <HardDrive size={15} />}
             <span>
-              {syncStatus.syncing
-                ? '同步中...'
-                : syncStatus.mode === 'cloud'
-                  ? 'Cloudflare D1 已連線'
-                  : '本機儲存 (Local-first)'}
+              {authLoading
+                ? '檢查登入...'
+                : syncStatus.syncing
+                  ? '同步中...'
+                  : user
+                    ? `${user.name} · 雲端同步`
+                    : '本機儲存 · 登入同步'}
             </span>
           </button>
         </div>
@@ -1041,7 +1012,7 @@ export function App() {
             aria-labelledby="sync-modal-title"
           >
             <div className="modal-header">
-              <h2 id="sync-modal-title">Headless 同步與資料管理</h2>
+              <h2 id="sync-modal-title">雲端同步與資料備份</h2>
               <button
                 type="button"
                 className="icon-btn"
@@ -1052,57 +1023,69 @@ export function App() {
               </button>
             </div>
 
-            <div className="field-group">
-              <label className="field-label" htmlFor="space-key-input">
-                空間識別碼（Space Key）
-              </label>
-              <div className="field-row">
-                <input
-                  id="space-key-input"
-                  className="field-input"
-                  value={spaceInput}
-                  onChange={(e) => {
-                    setSpaceInput(e.target.value);
-                    if (spaceError) setSpaceError(null);
+            {user ? (
+              <div className="field-group">
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '12px 14px',
+                    borderRadius: 10,
+                    background: 'rgba(255, 255, 255, 0.7)',
+                    border: '1px solid var(--border-soft, rgba(0, 0, 0, 0.08))',
                   }}
-                  placeholder="例如：space_my_notes"
-                />
+                >
+                  {user.avatarUrl && (
+                    <img
+                      src={user.avatarUrl}
+                      alt={user.name}
+                      style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }}
+                    />
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 15 }}>{user.name}</div>
+                    <div style={{ fontSize: 12, opacity: 0.72, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {user.email}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => void logout()}
+                  >
+                    <LogOut size={14} />
+                    <span>登出</span>
+                  </button>
+                </div>
+
+                {syncStatus.error ? (
+                  <p className="field-help" style={{ color: 'var(--vermilion)', marginTop: 10 }}>
+                    {syncStatus.error}
+                  </p>
+                ) : (
+                  <p className="field-help" style={{ marginTop: 10 }}>
+                    已啟用 Google 帳號雲端同步，所有新增與編輯會自動備份到 Cloudflare D1，跨裝置登入即可同步。
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="field-group">
+                <p className="field-help" style={{ marginBottom: 14, fontSize: 14, lineHeight: 1.6 }}>
+                  目前為<strong>本機儲存模式</strong>，所有資料皆存在此瀏覽器中，免登入即可使用。
+                  登入 Google 帳號後，系統會自動把你目前的待辦合併到雲端，方便在手機與電腦之間同步。
+                </p>
                 <button
                   type="button"
-                  className="btn-secondary"
-                  onClick={handleCopyShareLink}
+                  className="btn-primary"
+                  style={{ width: '100%', justifyContent: 'center', padding: '10px 16px' }}
+                  onClick={loginWithGoogle}
                 >
-                  <Copy size={14} />
-                  <span>{copiedHint ? '已複製' : '複製連結'}</span>
+                  <LogIn size={16} />
+                  <span>使用 Google 帳號登入並同步</span>
                 </button>
               </div>
-              {spaceError ? (
-                <p className="field-help" style={{ color: 'var(--vermilion)' }}>
-                  {spaceError}
-                </p>
-              ) : (
-                <p className="field-help">
-                  免註冊即可透過 Space Key 隔離資料；在其他裝置開啟同一個連結即可同步。
-                </p>
-              )}
-            </div>
-
-            <div className="field-group">
-              <label className="field-label" htmlFor="api-url-input">
-                Cloudflare Worker Headless API URL（選填）
-              </label>
-              <input
-                id="api-url-input"
-                className="field-input"
-                style={{ width: '100%' }}
-                value={apiInput}
-                onChange={(e) => setApiInput(e.target.value)}
-                placeholder="例如：https://postittodo-api.你的帳號.workers.dev"
-              />
-              <p className="field-help">
-                留空時僅使用瀏覽器本機儲存（Local-first）；填入已部署的 Worker 網址即啟用 D1 雲端同步。
-              </p>
-            </div>
+            )}
 
             <div
               style={{
@@ -1114,7 +1097,7 @@ export function App() {
                 marginTop: 18,
               }}
             >
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   className="btn-secondary"
@@ -1123,24 +1106,34 @@ export function App() {
                   <Download size={14} />
                   <span>匯出 JSON</span>
                 </button>
-                {apiUrl && (
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => void pushAllToCloud()}
-                  >
-                    <Cloud size={14} />
-                    <span>上傳本機資料</span>
-                  </button>
+                {user && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => void fetchFromCloud()}
+                    >
+                      <RefreshCw size={14} />
+                      <span>從雲端更新</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => void pushAllToCloud()}
+                    >
+                      <Cloud size={14} />
+                      <span>上傳本機資料</span>
+                    </button>
+                  </>
                 )}
               </div>
 
               <button
                 type="button"
-                className="btn-primary"
-                onClick={() => void handleSaveSyncSettings()}
+                className="btn-secondary"
+                onClick={() => setSyncModalOpen(false)}
               >
-                套用設定
+                關閉
               </button>
             </div>
           </div>

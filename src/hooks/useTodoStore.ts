@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
+  AuthUser,
   ByokConfig,
   InputParseMode,
   NoteIconId,
@@ -11,39 +12,6 @@ import { parseNoteWithByok } from '../utils/byokAi';
 import { parseVoiceOrTextNote } from '../utils/contextParser';
 
 const STORAGE_TODOS_KEY = 'postittodo_items_v2';
-const STORAGE_SPACE_KEY = 'postittodo_space_key_v2';
-const STORAGE_API_KEY = 'postittodo_api_url_v2';
-
-function createSpaceKey(): string {
-  const random = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
-  return `space_${random}`;
-}
-
-function getInitialSpaceKey(): string {
-  if (typeof window === 'undefined') return 'space_default';
-  const params = new URLSearchParams(window.location.search);
-  const fromUrl = params.get('space')?.trim();
-  if (fromUrl && /^[a-zA-Z0-9_-]{4,64}$/.test(fromUrl)) {
-    localStorage.setItem(STORAGE_SPACE_KEY, fromUrl);
-    return fromUrl;
-  }
-
-  const saved = localStorage.getItem(STORAGE_SPACE_KEY);
-  if (saved && /^[a-zA-Z0-9_-]{4,64}$/.test(saved)) {
-    return saved;
-  }
-
-  const fresh = createSpaceKey();
-  localStorage.setItem(STORAGE_SPACE_KEY, fresh);
-  return fresh;
-}
-
-function getInitialApiUrl(): string {
-  if (typeof window === 'undefined') return '';
-  const saved = localStorage.getItem(STORAGE_API_KEY);
-  if (saved !== null) return saved;
-  return (import.meta.env.VITE_API_URL as string | undefined)?.trim() ?? '';
-}
 
 const SEED_TODO_ID_PREFIX = 'demo-guide-';
 
@@ -99,7 +67,7 @@ function getSeedTodos(): Todo[] {
       id: `${SEED_TODO_ID_PREFIX}4-${suffix()}`,
       title: '資料預設存在本機，免登入即可離線使用',
       contextNote:
-        '所有待辦優先儲存在瀏覽器本機；若需跨裝置同步或搭配 iOS 捷徑寫入，可設定 Cloudflare Worker 與 Space Key。（試著切換上方「全部／進行中／已完成」看看篩選效果）',
+        '所有待辦優先儲存在瀏覽器本機；若需跨裝置同步，可點擊上方設定登入 Google 帳號。（試著切換上方「全部／進行中／已完成」看看篩選效果）',
       transcript: '',
       tags: ['④ 本機優先', '雲端同步'],
       icon: 'calendar',
@@ -129,10 +97,10 @@ function loadLocalTodos(): Todo[] {
 
 export function useTodoStore() {
   const [todos, setTodos] = useState<Todo[]>(loadLocalTodos);
-  const [spaceKey, setSpaceKeyState] = useState<string>(getInitialSpaceKey);
-  const [apiUrl, setApiUrlState] = useState<string>(getInitialApiUrl);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({
-    mode: getInitialApiUrl() ? 'cloud' : 'local',
+    mode: 'local',
     syncing: false,
     lastSyncedAt: null,
     error: null,
@@ -140,6 +108,8 @@ export function useTodoStore() {
 
   const todosRef = useRef(todos);
   todosRef.current = todos;
+  const userRef = useRef(user);
+  userRef.current = user;
 
   // 每次變動即寫入本機儲存 (Local-first)
   useEffect(() => {
@@ -150,80 +120,54 @@ export function useTodoStore() {
     }
   }, [todos]);
 
-  const normalizedApiBase = apiUrl.replace(/\/+$/, '');
+  const fetchFromCloud = useCallback(async () => {
+    if (!userRef.current) {
+      setSyncStatus({
+        mode: 'local',
+        syncing: false,
+        lastSyncedAt: null,
+        error: null,
+      });
+      return;
+    }
 
-  const fetchFromCloud = useCallback(
-    async (targetUrl = normalizedApiBase, targetSpace = spaceKey) => {
-      if (!targetUrl) {
-        setSyncStatus({
-          mode: 'local',
-          syncing: false,
-          lastSyncedAt: null,
-          error: null,
-        });
+    setSyncStatus((prev) => ({ ...prev, mode: 'cloud', syncing: true, error: null }));
+    try {
+      const res = await fetch('/api/todos', { credentials: 'include' });
+      if (res.status === 401) {
+        setUser(null);
+        setSyncStatus({ mode: 'local', syncing: false, lastSyncedAt: null, error: null });
         return;
       }
-
-      setSyncStatus((prev) => ({ ...prev, mode: 'cloud', syncing: true, error: null }));
-      try {
-        const res = await fetch(`${targetUrl}/api/todos`, {
-          headers: { 'X-Space-Key': targetSpace },
-        });
-        if (!res.ok) throw new Error(`雲端同步失敗 (${res.status})`);
-        const remoteTodos = (await res.json()) as Todo[];
-        setTodos(remoteTodos);
-        setSyncStatus({
-          mode: 'cloud',
-          syncing: false,
-          lastSyncedAt: new Date().toISOString(),
-          error: null,
-        });
-      } catch (err) {
-        setSyncStatus((prev) => ({
-          ...prev,
-          mode: 'cloud',
-          syncing: false,
-          error: err instanceof Error ? err.message : '無法連線到 Headless API',
-        }));
-      }
-    },
-    [normalizedApiBase, spaceKey]
-  );
-
-  useEffect(() => {
-    if (normalizedApiBase) {
-      void fetchFromCloud(normalizedApiBase, spaceKey);
+      if (!res.ok) throw new Error(`雲端同步失敗 (${res.status})`);
+      const remoteTodos = (await res.json()) as Todo[];
+      setTodos(remoteTodos);
+      setSyncStatus({
+        mode: 'cloud',
+        syncing: false,
+        lastSyncedAt: new Date().toISOString(),
+        error: null,
+      });
+    } catch (err) {
+      setSyncStatus((prev) => ({
+        ...prev,
+        mode: 'cloud',
+        syncing: false,
+        error: err instanceof Error ? err.message : '無法連線到雲端同步服務',
+      }));
     }
-  }, [normalizedApiBase, spaceKey, fetchFromCloud]);
-
-  const setApiUrl = useCallback((nextUrl: string) => {
-    const trimmed = nextUrl.trim().replace(/\/+$/, '');
-    setApiUrlState(trimmed);
-    localStorage.setItem(STORAGE_API_KEY, trimmed);
-    if (!trimmed) {
-      setSyncStatus({ mode: 'local', syncing: false, lastSyncedAt: null, error: null });
-    }
-  }, []);
-
-  const setSpaceKey = useCallback((nextKey: string) => {
-    const cleaned = nextKey.trim();
-    if (!/^[a-zA-Z0-9_-]{4,64}$/.test(cleaned)) return false;
-    setSpaceKeyState(cleaned);
-    localStorage.setItem(STORAGE_SPACE_KEY, cleaned);
-    return true;
   }, []);
 
   const pushAllToCloud = useCallback(async () => {
-    if (!normalizedApiBase) return;
+    if (!userRef.current) return;
     setSyncStatus((prev) => ({ ...prev, syncing: true, error: null }));
     try {
-      const res = await fetch(`${normalizedApiBase}/api/todos/sync`, {
+      const localNonSeed = todosRef.current.filter((t) => !isSeedTodo(t));
+      const res = await fetch('/api/todos/sync', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Space-Key': spaceKey,
-        },
-        body: JSON.stringify({ todos: todosRef.current }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ todos: localNonSeed }),
       });
       if (!res.ok) throw new Error(`同步失敗 (${res.status})`);
       const synced = (await res.json()) as Todo[];
@@ -241,7 +185,88 @@ export function useTodoStore() {
         error: err instanceof Error ? err.message : '雲端同步失敗',
       }));
     }
-  }, [normalizedApiBase, spaceKey]);
+  }, []);
+
+  // 初始化時檢查登入狀態；若已登入，將本機非範例待辦合併同步至雲端
+  useEffect(() => {
+    let cancelled = false;
+    async function initAuth() {
+      try {
+        const res = await fetch('/api/auth/me', { credentials: 'include' });
+        if (!res.ok) {
+          if (!cancelled) setAuthLoading(false);
+          return;
+        }
+        const data = (await res.json()) as { user: AuthUser | null };
+        if (cancelled) return;
+
+        if (!data.user) {
+          setUser(null);
+          setSyncStatus({ mode: 'local', syncing: false, lastSyncedAt: null, error: null });
+          setAuthLoading(false);
+          return;
+        }
+
+        setUser(data.user);
+        userRef.current = data.user;
+        setSyncStatus((prev) => ({ ...prev, mode: 'cloud', syncing: true, error: null }));
+
+        const localNonSeed = todosRef.current.filter((t) => !isSeedTodo(t));
+        if (localNonSeed.length > 0) {
+          const syncRes = await fetch('/api/todos/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ todos: localNonSeed }),
+          });
+          if (!cancelled && syncRes.ok) {
+            const merged = (await syncRes.json()) as Todo[];
+            setTodos(merged);
+          }
+        } else {
+          const listRes = await fetch('/api/todos', { credentials: 'include' });
+          if (!cancelled && listRes.ok) {
+            const remote = (await listRes.json()) as Todo[];
+            if (remote.length > 0 || todosRef.current.length === 0) {
+              setTodos(remote);
+            }
+          }
+        }
+
+        if (!cancelled) {
+          setSyncStatus({
+            mode: 'cloud',
+            syncing: false,
+            lastSyncedAt: new Date().toISOString(),
+            error: null,
+          });
+        }
+      } catch {
+        // 本機純 Vite 開發環境未啟動 Functions 時，安靜降級為本機模式
+      } finally {
+        if (!cancelled) setAuthLoading(false);
+      }
+    }
+    void initAuth();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const loginWithGoogle = useCallback(() => {
+    window.location.href = '/api/auth/google';
+  }, []);
+
+  const logout = useCallback(async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch {
+      // 忽略登出請求錯誤
+    }
+    setUser(null);
+    userRef.current = null;
+    setSyncStatus({ mode: 'local', syncing: false, lastSyncedAt: null, error: null });
+  }, []);
 
   const addTodo = useCallback(
     async (
@@ -265,10 +290,9 @@ export function useTodoStore() {
         byokConfig,
       } = options;
 
-      // 一般模式：僅用本機規則純整理；智慧模式：先以本機規則作為降級備案，再呼叫 AI
+      // 一般模式：僅用本機規則純整理；智慧模式：先以本機規則作為降級備案，再呼叫 BYOK AI
       const fallbackParsed = parseVoiceOrTextNote(trimmed, isVoice);
       let parsedList: ParsedNoteInput[] = [fallbackParsed];
-      let aiParsed = false;
       let fallbackNotice: string | undefined = undefined;
 
       if (mode === 'smart' && byokConfig?.enabled) {
@@ -276,41 +300,10 @@ export function useTodoStore() {
           const byokResults = await parseNoteWithByok(trimmed, byokConfig);
           if (byokResults.length > 0) {
             parsedList = byokResults;
-            aiParsed = true;
           }
         } catch {
           // AI 金鑰端點失敗，標註降級提示
           fallbackNotice = 'AI 整理連線異常，已自動切換為本機規則拆解。';
-        }
-      }
-
-      if (!aiParsed && mode === 'smart' && normalizedApiBase && trimmed.length >= 12) {
-        try {
-          const aiRes = await fetch(`${normalizedApiBase}/api/voice/parse`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: trimmed }),
-          });
-          if (aiRes.ok) {
-            const aiData = (await aiRes.json()) as {
-              source?: string;
-              title?: string;
-              contextNote?: string;
-              tags?: string[];
-            };
-            if (aiData.source === 'workers-ai' && aiData.title) {
-              parsedList = [
-                {
-                  title: aiData.title,
-                  contextNote: aiData.contextNote ?? fallbackParsed.contextNote,
-                  transcript: trimmed,
-                  tags: aiData.tags?.length ? aiData.tags : fallbackParsed.tags,
-                },
-              ];
-            }
-          }
-        } catch {
-          // 忽略 AI 端點失敗，直接使用本機拆解結果
         }
       }
 
@@ -333,16 +326,14 @@ export function useTodoStore() {
         ...prev.map((item, idx) => ({ ...item, order: idx + newTodos.length })),
       ]);
 
-      if (normalizedApiBase) {
+      if (userRef.current) {
         try {
           await Promise.all(
             newTodos.map((newTodo) =>
-              fetch(`${normalizedApiBase}/api/todos`, {
+              fetch('/api/todos', {
                 method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'X-Space-Key': spaceKey,
-                },
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify(newTodo),
               })
             )
@@ -359,7 +350,7 @@ export function useTodoStore() {
 
       return { ok: true, fallbackNotice };
     },
-    [normalizedApiBase, spaceKey]
+    []
   );
 
   const updateTodo = useCallback(
@@ -380,14 +371,12 @@ export function useTodoStore() {
         )
       );
 
-      if (normalizedApiBase) {
+      if (userRef.current) {
         try {
-          await fetch(`${normalizedApiBase}/api/todos/${id}`, {
+          await fetch(`/api/todos/${id}`, {
             method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Space-Key': spaceKey,
-            },
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify(patch),
           });
         } catch {
@@ -395,121 +384,103 @@ export function useTodoStore() {
         }
       }
     },
-    [normalizedApiBase, spaceKey]
+    []
   );
 
-  const toggleTodo = useCallback(
-    async (id: string) => {
-      const target = todosRef.current.find((t) => t.id === id);
-      if (!target) return;
-      const nextCompleted = !target.completed;
-      const now = new Date().toISOString();
+  const toggleTodo = useCallback(async (id: string) => {
+    const target = todosRef.current.find((t) => t.id === id);
+    if (!target) return;
+    const nextCompleted = !target.completed;
+    const now = new Date().toISOString();
 
-      setTodos((prev) =>
-        prev.map((item) =>
-          item.id === id
-            ? { ...item, completed: nextCompleted, updatedAt: now }
-            : item
-        )
-      );
+    setTodos((prev) =>
+      prev.map((item) =>
+        item.id === id
+          ? { ...item, completed: nextCompleted, updatedAt: now }
+          : item
+      )
+    );
 
-      if (normalizedApiBase) {
-        try {
-          await fetch(`${normalizedApiBase}/api/todos/${id}/toggle`, {
-            method: 'PATCH',
-            headers: { 'X-Space-Key': spaceKey },
-          });
-        } catch {
-          setSyncStatus((prev) => ({ ...prev, error: '狀態已暫存本機，雲端同步失敗' }));
-        }
+    if (userRef.current) {
+      try {
+        await fetch(`/api/todos/${id}/toggle`, {
+          method: 'PATCH',
+          credentials: 'include',
+        });
+      } catch {
+        setSyncStatus((prev) => ({ ...prev, error: '狀態已暫存本機，雲端同步失敗' }));
       }
-    },
-    [normalizedApiBase, spaceKey]
-  );
+    }
+  }, []);
 
-  const deleteTodo = useCallback(
-    async (id: string) => {
-      setTodos((prev) => prev.filter((item) => item.id !== id));
+  const deleteTodo = useCallback(async (id: string) => {
+    setTodos((prev) => prev.filter((item) => item.id !== id));
 
-      if (normalizedApiBase) {
-        try {
-          await fetch(`${normalizedApiBase}/api/todos/${id}`, {
-            method: 'DELETE',
-            headers: { 'X-Space-Key': spaceKey },
-          });
-        } catch {
-          setSyncStatus((prev) => ({ ...prev, error: '刪除已套用本機，雲端同步失敗' }));
-        }
+    if (userRef.current) {
+      try {
+        await fetch(`/api/todos/${id}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+      } catch {
+        setSyncStatus((prev) => ({ ...prev, error: '刪除已套用本機，雲端同步失敗' }));
       }
-    },
-    [normalizedApiBase, spaceKey]
-  );
+    }
+  }, []);
 
-  const reorderTodos = useCallback(
-    async (orderedTodos: Todo[]) => {
-      const normalized = orderedTodos.map((item, index) => ({
-        ...item,
-        order: index,
-      }));
-      setTodos(normalized);
+  const reorderTodos = useCallback(async (orderedTodos: Todo[]) => {
+    const normalized = orderedTodos.map((item, index) => ({
+      ...item,
+      order: index,
+    }));
+    setTodos(normalized);
 
-      if (normalizedApiBase) {
-        try {
-          await fetch(`${normalizedApiBase}/api/todos/reorder`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Space-Key': spaceKey,
-            },
-            body: JSON.stringify({ todoIds: normalized.map((t) => t.id) }),
-          });
-        } catch {
-          setSyncStatus((prev) => ({ ...prev, error: '排序已套用本機，雲端同步失敗' }));
-        }
+    if (userRef.current) {
+      try {
+        await fetch('/api/todos/reorder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ todoIds: normalized.map((t) => t.id) }),
+        });
+      } catch {
+        setSyncStatus((prev) => ({ ...prev, error: '排序已套用本機，雲端同步失敗' }));
       }
-    },
-    [normalizedApiBase, spaceKey]
-  );
+    }
+  }, []);
 
-  const restoreTodo = useCallback(
-    async (restoredItem: Todo) => {
-      setTodos((prev) => {
-        if (prev.some((t) => t.id === restoredItem.id)) return prev;
-        return [restoredItem, ...prev];
-      });
+  const restoreTodo = useCallback(async (restoredItem: Todo) => {
+    setTodos((prev) => {
+      if (prev.some((t) => t.id === restoredItem.id)) return prev;
+      return [restoredItem, ...prev];
+    });
 
-      if (normalizedApiBase) {
-        try {
-          await fetch(`${normalizedApiBase}/api/todos`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Space-Key': spaceKey,
-            },
-            body: JSON.stringify(restoredItem),
-          });
-        } catch {
-          setSyncStatus((prev) => ({ ...prev, error: '復原已套用本機，雲端同步稍後重試' }));
-        }
+    if (userRef.current) {
+      try {
+        await fetch('/api/todos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(restoredItem),
+        });
+      } catch {
+        setSyncStatus((prev) => ({ ...prev, error: '復原已套用本機，雲端同步稍後重試' }));
       }
-    },
-    [normalizedApiBase, spaceKey]
-  );
+    }
+  }, []);
 
   const loadSeedTodos = useCallback(async () => {
     const seeds = getSeedTodos();
     setTodos((prev) => (prev.length === 0 ? seeds : prev));
 
-    if (normalizedApiBase && todosRef.current.length === 0) {
+    if (userRef.current && todosRef.current.length === 0) {
       try {
         await Promise.all(
           seeds.map((item) =>
-            fetch(`${normalizedApiBase}/api/todos`, {
+            fetch('/api/todos', {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-Space-Key': spaceKey,
-              },
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
               body: JSON.stringify(item),
             })
           )
@@ -518,7 +489,7 @@ export function useTodoStore() {
         setSyncStatus((prev) => ({ ...prev, error: '範例已載入本機，雲端同步稍後重試' }));
       }
     }
-  }, [normalizedApiBase, spaceKey]);
+  }, []);
 
   const clearSeedTodos = useCallback(async () => {
     const seedIds = todosRef.current.filter(isSeedTodo).map((t) => t.id);
@@ -526,13 +497,13 @@ export function useTodoStore() {
 
     setTodos((prev) => prev.filter((item) => !isSeedTodo(item)));
 
-    if (normalizedApiBase) {
+    if (userRef.current) {
       try {
         await Promise.all(
           seedIds.map((id) =>
-            fetch(`${normalizedApiBase}/api/todos/${id}`, {
+            fetch(`/api/todos/${id}`, {
               method: 'DELETE',
-              headers: { 'X-Space-Key': spaceKey },
+              credentials: 'include',
             })
           )
         );
@@ -540,15 +511,15 @@ export function useTodoStore() {
         setSyncStatus((prev) => ({ ...prev, error: '已清除本機範例，雲端同步稍後重試' }));
       }
     }
-  }, [normalizedApiBase, spaceKey]);
+  }, []);
 
   return {
     todos,
-    spaceKey,
-    apiUrl,
+    user,
+    authLoading,
     syncStatus,
-    setApiUrl,
-    setSpaceKey,
+    loginWithGoogle,
+    logout,
     fetchFromCloud,
     pushAllToCloud,
     addTodo,
