@@ -18,6 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
+  BookText,
   Check,
   ChevronDown,
   ChevronUp,
@@ -34,25 +35,50 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
   Sparkles,
   Trash2,
+  Wand2,
   X,
 } from 'lucide-react';
 import { ByokModal } from './components/ByokModal';
 import { IconPickerPopover } from './components/IconPickerPopover';
 import { IconTemplateModal } from './components/IconTemplateModal';
+import { VoiceGlossaryModal } from './components/VoiceGlossaryModal';
+import { VoiceSegmentEditor } from './components/VoiceSegmentEditor';
 import { useByokConfig } from './hooks/useByokConfig';
 import { isSeedTodo, useTodoStore } from './hooks/useTodoStore';
 import { useVoiceInput } from './hooks/useVoiceInput';
-import type { FilterType, InputParseMode, NoteIconId, Todo } from './types';
-import { PROVIDER_PRESETS } from './utils/byokAi';
+import type {
+  ByokConfig,
+  FilterType,
+  GlossaryEntry,
+  InputParseMode,
+  NoteIconId,
+  Todo,
+  VoiceEditSuggestion,
+  VoiceRecognitionResult,
+  VoiceSegment,
+} from './types';
+import {
+  editTodoWithVoice,
+  proofreadTranscriptWithByok,
+  PROVIDER_PRESETS,
+} from './utils/byokAi';
+import { parseLocalVoiceEdit } from './utils/localVoiceEdit';
 import {
   buildFieldSkeleton,
   getIconFieldConfig,
   getNoteIconMeta,
   NOTE_ICON_META,
 } from './utils/noteIcons';
+import {
+  applyGlossary,
+  loadGlossary,
+  saveGlossary,
+  upsertGlossaryEntry,
+} from './utils/voiceGlossary';
 import './App.css';
 
 function formatRelativeDate(iso: string): string {
@@ -69,6 +95,9 @@ function formatRelativeDate(iso: string): string {
 interface SortableNoteCardProps {
   todo: Todo;
   canReorder?: boolean;
+  glossary: GlossaryEntry[];
+  byokConfig: ByokConfig;
+  byokLocked: boolean;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
   onUpdate: (
@@ -80,6 +109,9 @@ interface SortableNoteCardProps {
 function SortableNoteCard({
   todo,
   canReorder = true,
+  glossary,
+  byokConfig,
+  byokLocked,
   onToggle,
   onDelete,
   onUpdate,
@@ -89,6 +121,50 @@ function SortableNoteCard({
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [editTitle, setEditTitle] = useState(todo.title);
   const [editContext, setEditContext] = useState(todo.contextNote);
+
+  // 卡片編輯抽屜欄位麥克風（title / context）與語音指令修改狀態
+  const [activeFieldMic, setActiveFieldMic] = useState<'title' | 'context' | null>(null);
+  const [voiceEditOpen, setVoiceEditOpen] = useState(false);
+  const [voiceInstruction, setVoiceInstruction] = useState('');
+  const [voiceEditLoading, setVoiceEditLoading] = useState(false);
+  const [voiceEditError, setVoiceEditError] = useState<string | null>(null);
+  const [voiceSuggestion, setVoiceSuggestion] = useState<VoiceEditSuggestion | null>(null);
+
+  const glossaryRef = useRef(glossary);
+  glossaryRef.current = glossary;
+  const activeFieldMicRef = useRef(activeFieldMic);
+  activeFieldMicRef.current = activeFieldMic;
+
+  const canUseAi = byokConfig.enabled && !byokLocked;
+
+  const fieldVoice = useVoiceInput({
+    lang: 'zh-TW',
+    continuous: false,
+    maxAlternatives: 5,
+    onFinalTranscript: (rawChunk) => {
+      const { text: cleanChunk } = applyGlossary(rawChunk, glossaryRef.current);
+      const target = activeFieldMicRef.current;
+      if (target === 'title') {
+        setEditTitle((prev) => (prev.trim() ? `${prev.trimEnd()} ${cleanChunk}` : cleanChunk));
+      } else if (target === 'context') {
+        setEditContext((prev) => (prev.trim() ? `${prev.trimEnd()} ${cleanChunk}` : cleanChunk));
+      }
+      setActiveFieldMic(null);
+    },
+  });
+
+  const commandVoice = useVoiceInput({
+    lang: 'zh-TW',
+    continuous: false,
+    maxAlternatives: 5,
+    onFinalTranscript: (rawChunk) => {
+      const { text: cleanChunk } = applyGlossary(rawChunk, glossaryRef.current);
+      setVoiceInstruction((prev) =>
+        prev.trim() ? `${prev.trimEnd()} ${cleanChunk}` : cleanChunk
+      );
+      setVoiceEditError(null);
+    },
+  });
 
   const {
     attributes,
@@ -128,6 +204,10 @@ function SortableNoteCard({
       tags: extractedTags,
     });
     setEditing(false);
+    if (fieldVoice.isListening) {
+      fieldVoice.stop();
+    }
+    setActiveFieldMic(null);
   };
 
   const startEditing = () => {
@@ -135,6 +215,149 @@ function SortableNoteCard({
     setEditContext(todo.contextNote);
     setExpanded(true);
     setEditing(true);
+    setVoiceEditOpen(false);
+  };
+
+  const toggleFieldMic = (field: 'title' | 'context') => {
+    if (fieldVoice.isListening && activeFieldMic === field) {
+      fieldVoice.stop();
+      setActiveFieldMic(null);
+      return;
+    }
+    if (fieldVoice.isListening) {
+      fieldVoice.stop();
+    }
+    setActiveFieldMic(field);
+    fieldVoice.start();
+  };
+
+  const openVoiceEdit = () => {
+    const nextOpen = !voiceEditOpen;
+    setVoiceEditOpen(nextOpen);
+    if (nextOpen) {
+      setExpanded(true);
+      setEditing(false);
+      setVoiceSuggestion(null);
+      setVoiceEditError(null);
+      if (commandVoice.isSupported && !commandVoice.isListening) {
+        commandVoice.start();
+      }
+    } else if (commandVoice.isListening) {
+      commandVoice.stop();
+    }
+  };
+
+  const handleDirectAppendContext = () => {
+    const addition = voiceInstruction.trim();
+    if (!addition) return;
+    if (commandVoice.isListening) {
+      commandVoice.stop();
+    }
+    const nextContext = todo.contextNote.trim()
+      ? `${todo.contextNote.trimEnd()}\n${addition}`
+      : addition;
+    onUpdate(todo.id, { contextNote: nextContext });
+    setVoiceInstruction('');
+    setVoiceSuggestion(null);
+    setVoiceEditError(null);
+    setVoiceEditOpen(false);
+  };
+
+  const handleSendToEditForm = () => {
+    if (commandVoice.isListening) {
+      commandVoice.stop();
+    }
+    const extra = voiceInstruction.trim();
+    setEditTitle(todo.title);
+    setEditContext(
+      extra
+        ? todo.contextNote.trim()
+          ? `${todo.contextNote.trimEnd()}\n${extra}`
+          : extra
+        : todo.contextNote
+    );
+    setExpanded(true);
+    setEditing(true);
+    setVoiceEditOpen(false);
+    setVoiceSuggestion(null);
+    setVoiceEditError(null);
+    setVoiceInstruction('');
+  };
+
+  const handleRunVoiceEdit = async () => {
+    const instruction = voiceInstruction.trim();
+    if (!instruction || voiceEditLoading) return;
+    if (commandVoice.isListening) {
+      commandVoice.stop();
+    }
+
+    if (!canUseAi) {
+      // 未設定或鎖定 AI 金鑰時，先以本機規則嘗試解析語音修改指令
+      const localRes = parseLocalVoiceEdit(todo, instruction);
+      if (localRes.matched) {
+        setVoiceEditError(null);
+        setVoiceSuggestion(localRes.suggestion);
+      } else if (localRes.reason) {
+        setVoiceSuggestion(null);
+        setVoiceEditError(localRes.reason);
+      } else {
+        setVoiceEditError(null);
+        setVoiceSuggestion({
+          title: todo.title,
+          contextNote: todo.contextNote.trim()
+            ? `${todo.contextNote.trimEnd()}\n${instruction}`
+            : instruction,
+          tags: todo.tags,
+          icon: todo.icon,
+          summary: '語音補充預覽（可直接微調標題或脈絡後再套用）',
+        });
+      }
+      return;
+    }
+
+    setVoiceEditLoading(true);
+    setVoiceEditError(null);
+    setVoiceSuggestion(null);
+    try {
+      const suggestion = await editTodoWithVoice(todo, instruction, byokConfig);
+      setVoiceSuggestion(suggestion);
+    } catch (err) {
+      setVoiceEditError(
+        err instanceof Error ? err.message : 'AI 語音修改失敗，請稍後再試或改用手動編輯'
+      );
+    } finally {
+      setVoiceEditLoading(false);
+    }
+  };
+
+  const handleApplyVoiceSuggestion = () => {
+    if (!voiceSuggestion) return;
+    const nextTitle = voiceSuggestion.title.trim();
+    if (!nextTitle) return;
+
+    const nextContext = voiceSuggestion.contextNote.trim();
+    // 檢查預覽微調後的內容中是否包含 #標籤 並合併去重至 tags
+    const mergedTags = [...voiceSuggestion.tags];
+    const tagMatches = `${nextTitle} ${nextContext}`.match(/[#＃]([^\s#＃,，.。;；]+)/g);
+    if (tagMatches) {
+      for (const m of tagMatches) {
+        const clean = m.replace(/^[#＃]/, '').trim();
+        if (clean && !mergedTags.includes(clean)) {
+          mergedTags.push(clean);
+        }
+      }
+    }
+
+    onUpdate(todo.id, {
+      title: nextTitle,
+      contextNote: nextContext,
+      tags: mergedTags,
+      icon: voiceSuggestion.icon,
+    });
+    setVoiceSuggestion(null);
+    setVoiceEditError(null);
+    setVoiceInstruction('');
+    setVoiceEditOpen(false);
   };
 
   return (
@@ -223,6 +446,20 @@ function SortableNoteCard({
           </button>
           <button
             type="button"
+            className={`icon-btn ${voiceEditOpen ? 'is-voice-active' : ''}`}
+            aria-label="用語音修改待辦"
+            title={
+              canUseAi
+                ? '用語音指令修改此待辦（AI 解析差異預覽）'
+                : '用語音修改或補充此待辦（支援「把 A 改成 B」或補充脈絡）'
+            }
+            onClick={openVoiceEdit}
+            disabled={!commandVoice.isSupported}
+          >
+            <Mic size={15} />
+          </button>
+          <button
+            type="button"
             className="icon-btn"
             aria-label="編輯待辦與脈絡"
             onClick={startEditing}
@@ -242,10 +479,229 @@ function SortableNoteCard({
 
       {expanded && (
         <div className="note-drawer">
+          {voiceEditOpen && (
+            <div className="card-voice-edit-panel">
+              <div className="card-voice-edit-head">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Mic size={14} />
+                  <span>
+                    {canUseAi
+                      ? '語音指令修改（例如：「把禮拜三改成禮拜五，順便備註帶發票」）'
+                      : '語音修改／補充（可說「把 A 改成 B」、「刪掉 A」，或直接補充脈絡）'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  style={{ width: 22, height: 22 }}
+                  onClick={() => {
+                    if (commandVoice.isListening) commandVoice.stop();
+                    setVoiceEditOpen(false);
+                  }}
+                  aria-label="關閉語音修改"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+
+              <div className="card-voice-input-row">
+                <input
+                  type="text"
+                  className="drawer-input"
+                  value={voiceInstruction}
+                  onChange={(e) => setVoiceInstruction(e.target.value)}
+                  placeholder={
+                    commandVoice.isListening
+                      ? commandVoice.interimText || '正在聆聽修改指令...'
+                      : '說出或輸入想修改的內容...'
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void handleRunVoiceEdit();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className={`voice-mini-mic ${commandVoice.isListening ? 'is-listening' : ''}`}
+                  onClick={commandVoice.toggle}
+                  title={commandVoice.isListening ? '停止錄音' : '開始口述指令'}
+                  aria-label="口述修改指令"
+                >
+                  {commandVoice.isListening ? <MicOff size={15} /> : <Mic size={15} />}
+                </button>
+              </div>
+
+              <div className="card-voice-actions">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={{ padding: '6px 10px', fontSize: '0.8rem' }}
+                  disabled={voiceEditLoading}
+                  onClick={handleSendToEditForm}
+                  title="開啟編輯表單手動修改標題、脈絡或圖示"
+                >
+                  <Pencil size={13} />
+                  <span>帶入編輯框</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={{ padding: '6px 10px', fontSize: '0.8rem' }}
+                  disabled={!voiceInstruction.trim() || voiceEditLoading}
+                  onClick={handleDirectAppendContext}
+                  title="不經解析，直接附加至脈絡備註"
+                >
+                  <Plus size={14} />
+                  <span>直接附加</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                  disabled={!voiceInstruction.trim() || voiceEditLoading}
+                  onClick={() => void handleRunVoiceEdit()}
+                >
+                  <Wand2 size={14} />
+                  <span>
+                    {voiceEditLoading
+                      ? '解析中...'
+                      : canUseAi
+                        ? 'AI 預覽修改'
+                        : '預覽修改'}
+                  </span>
+                </button>
+              </div>
+
+              {voiceEditError && (
+                <div className="voice-edit-error">{voiceEditError}</div>
+              )}
+
+              {voiceSuggestion && (
+                <div className="voice-diff-preview">
+                  <div className="voice-diff-summary">
+                    <Sparkles size={13} />
+                    <span>{voiceSuggestion.summary}</span>
+                  </div>
+                  <div className="voice-diff-grid">
+                    <div className="voice-diff-edit-field">
+                      <div className="voice-diff-field-head">
+                        <span className="voice-diff-label">標題</span>
+                        {voiceSuggestion.title !== todo.title && (
+                          <span className="voice-diff-old">原：{todo.title}</span>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        className="drawer-input"
+                        value={voiceSuggestion.title}
+                        onChange={(e) =>
+                          setVoiceSuggestion((prev) =>
+                            prev ? { ...prev, title: e.target.value } : prev
+                          )
+                        }
+                        placeholder="待辦標題不可空白"
+                      />
+                    </div>
+                    <div className="voice-diff-edit-field">
+                      <div className="voice-diff-field-head">
+                        <span className="voice-diff-label">脈絡</span>
+                        {voiceSuggestion.contextNote !== todo.contextNote && (
+                          <span className="voice-diff-old">
+                            原：{todo.contextNote || '（空白）'}
+                          </span>
+                        )}
+                      </div>
+                      <textarea
+                        className="drawer-textarea voice-diff-textarea"
+                        rows={2}
+                        value={voiceSuggestion.contextNote}
+                        onChange={(e) =>
+                          setVoiceSuggestion((prev) =>
+                            prev ? { ...prev, contextNote: e.target.value } : prev
+                          )
+                        }
+                        placeholder="補充原因、對象、型號或期限..."
+                      />
+                    </div>
+                    {voiceSuggestion.tags.join(',') !== todo.tags.join(',') && (
+                      <div className="voice-diff-row">
+                        <span className="voice-diff-label">標籤</span>
+                        <span className="voice-diff-old">
+                          {todo.tags.join('、') || '（無）'}
+                        </span>
+                        <span className="voice-diff-arrow">→</span>
+                        <span className="voice-diff-new">
+                          {voiceSuggestion.tags.join('、') || '（無）'}
+                        </span>
+                      </div>
+                    )}
+                    {voiceSuggestion.icon && voiceSuggestion.icon !== todo.icon && (
+                      <div className="voice-diff-row">
+                        <span className="voice-diff-label">圖示</span>
+                        <span className="voice-diff-old">
+                          {getNoteIconMeta(todo.icon).label}
+                        </span>
+                        <span className="voice-diff-arrow">→</span>
+                        <span className="voice-diff-new">
+                          {getNoteIconMeta(voiceSuggestion.icon).label}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="voice-diff-actions">
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => setVoiceSuggestion(null)}
+                    >
+                      捨棄
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={!voiceSuggestion.title.trim()}
+                      onClick={handleApplyVoiceSuggestion}
+                    >
+                      <Check size={14} />
+                      <span>套用變更</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {editing ? (
             <div className="drawer-edit-form">
               <div>
-                <div className="drawer-section-label">標題</div>
+                <div className="drawer-label-row">
+                  <div className="drawer-section-label">標題</div>
+                  {fieldVoice.isSupported && (
+                    <button
+                      type="button"
+                      className={`drawer-field-mic ${
+                        fieldVoice.isListening && activeFieldMic === 'title'
+                          ? 'is-listening'
+                          : ''
+                      }`}
+                      onClick={() => toggleFieldMic('title')}
+                      title="用語音追加標題文字"
+                    >
+                      {fieldVoice.isListening && activeFieldMic === 'title' ? (
+                        <MicOff size={12} />
+                      ) : (
+                        <Mic size={12} />
+                      )}
+                      <span>
+                        {fieldVoice.isListening && activeFieldMic === 'title'
+                          ? '聆聽中...'
+                          : '語音追加'}
+                      </span>
+                    </button>
+                  )}
+                </div>
                 <input
                   className="drawer-input"
                   value={editTitle}
@@ -254,7 +710,34 @@ function SortableNoteCard({
                 />
               </div>
               <div>
-                <div className="drawer-section-label">脈絡備註（避免過幾天忘記在記什麼）</div>
+                <div className="drawer-label-row">
+                  <div className="drawer-section-label">
+                    脈絡備註（避免過幾天忘記在記什麼）
+                  </div>
+                  {fieldVoice.isSupported && (
+                    <button
+                      type="button"
+                      className={`drawer-field-mic ${
+                        fieldVoice.isListening && activeFieldMic === 'context'
+                          ? 'is-listening'
+                          : ''
+                      }`}
+                      onClick={() => toggleFieldMic('context')}
+                      title="用語音追加脈絡備註"
+                    >
+                      {fieldVoice.isListening && activeFieldMic === 'context' ? (
+                        <MicOff size={12} />
+                      ) : (
+                        <Mic size={12} />
+                      )}
+                      <span>
+                        {fieldVoice.isListening && activeFieldMic === 'context'
+                          ? '聆聽中...'
+                          : '語音追加'}
+                      </span>
+                    </button>
+                  )}
+                </div>
                 <textarea
                   className="drawer-textarea"
                   value={editContext}
@@ -288,7 +771,11 @@ function SortableNoteCard({
                   <button
                     type="button"
                     className="btn-secondary"
-                    onClick={() => setEditing(false)}
+                    onClick={() => {
+                      if (fieldVoice.isListening) fieldVoice.stop();
+                      setActiveFieldMic(null);
+                      setEditing(false);
+                    }}
                   >
                     取消
                   </button>
@@ -392,22 +879,187 @@ export function App() {
   const [recentlyDeleted, setRecentlyDeleted] = useState<Todo | null>(null);
   const undoTimeoutRef = useRef<number | null>(null);
 
+  // 語音編輯模式：個人詞庫、草稿分段、單段重錄、語音控制指令與 AI 校對
+  const [glossary, setGlossary] = useState<GlossaryEntry[]>(loadGlossary);
+  const [glossaryModalOpen, setGlossaryModalOpen] = useState(false);
+  const [voiceSegments, setVoiceSegments] = useState<VoiceSegment[]>([]);
+  const [segmentUndoStack, setSegmentUndoStack] = useState<
+    Array<{ title: string; context: string; segments: VoiceSegment[] }>
+  >([]);
+  const [rerecordingSegmentId, setRerecordingSegmentId] = useState<string | null>(null);
+  const [voiceCommandsEnabled, setVoiceCommandsEnabled] = useState(true);
+  const [commandUndoNotice, setCommandUndoNotice] = useState<{
+    label: string;
+    snapshot: { title: string; context: string; segments: VoiceSegment[] };
+  } | null>(null);
+  const commandUndoTimerRef = useRef<number | null>(null);
+  const [isProofreading, setIsProofreading] = useState(false);
+  const [proofreadBackup, setProofreadBackup] = useState<{
+    title: string;
+    context: string;
+  } | null>(null);
+
   const byok = useByokConfig();
+
+  const glossaryRef = useRef(glossary);
+  glossaryRef.current = glossary;
+  const draftTitleRef = useRef(draftTitle);
+  draftTitleRef.current = draftTitle;
+  const draftContextRef = useRef(draftContext);
+  draftContextRef.current = draftContext;
+  const voiceSegmentsRef = useRef(voiceSegments);
+  voiceSegmentsRef.current = voiceSegments;
+  const voiceCommandsEnabledRef = useRef(voiceCommandsEnabled);
+  voiceCommandsEnabledRef.current = voiceCommandsEnabled;
+  const rerecordingIdRef = useRef(rerecordingSegmentId);
+  rerecordingIdRef.current = rerecordingSegmentId;
+
+  const updateGlossary = (next: GlossaryEntry[]) => {
+    setGlossary(next);
+    saveGlossary(next);
+  };
+
+  const handleLearnGlossary = (wrong: string, correct: string) => {
+    const next = upsertGlossaryEntry(glossaryRef.current, wrong, correct);
+    updateGlossary(next);
+  };
+
+  const rebuildDraftFromSegments = (nextSegments: VoiceSegment[]) => {
+    const titleParts = nextSegments
+      .filter((s) => s.target === 'title')
+      .map((s) => s.text.trim())
+      .filter(Boolean);
+    const contextParts = nextSegments
+      .filter((s) => s.target === 'context')
+      .map((s) => s.text.trim())
+      .filter(Boolean);
+    setDraftTitle(titleParts.join(' '));
+    setDraftContext(contextParts.join(' '));
+  };
+
+  const pushUndoSnapshot = () => {
+    const snapshot = {
+      title: draftTitleRef.current,
+      context: draftContextRef.current,
+      segments: voiceSegmentsRef.current,
+    };
+    setSegmentUndoStack((prev) => [...prev.slice(-9), snapshot]);
+    return snapshot;
+  };
+
+  const showCommandUndoBanner = (
+    label: string,
+    snapshot: { title: string; context: string; segments: VoiceSegment[] }
+  ) => {
+    setCommandUndoNotice({ label, snapshot });
+    if (commandUndoTimerRef.current) {
+      window.clearTimeout(commandUndoTimerRef.current);
+    }
+    commandUndoTimerRef.current = window.setTimeout(() => {
+      setCommandUndoNotice(null);
+    }, 4500);
+  };
 
   const voice = useVoiceInput({
     lang: 'zh-TW',
-    onFinalTranscript: (chunk) => {
-      setUsedVoiceInDraft(true);
-      // 語音輸入：若標題尚無內容則填入標題；若已存在標題則補充至脈絡備註
-      setDraftTitle((prevTitle) => {
-        if (!prevTitle.trim()) {
-          return chunk;
+    continuous: true,
+    maxAlternatives: 5,
+    onFinalResult: (result: VoiceRecognitionResult) => {
+      const normalizedCmd = result.text.replace(/[\s,，.。!！?？]/g, '');
+
+      if (voiceCommandsEnabledRef.current) {
+        if (['刪掉上一句', '刪除上一句', '撤銷上一句'].includes(normalizedCmd)) {
+          const current = voiceSegmentsRef.current;
+          if (current.length > 0) {
+            const snap = pushUndoSnapshot();
+            const nextSegments = current.slice(0, -1);
+            setVoiceSegments(nextSegments);
+            rebuildDraftFromSegments(nextSegments);
+            showCommandUndoBanner('已依語音指令刪除上一句', snap);
+          }
+          return;
         }
-        setDraftContext((prevContext) =>
-          prevContext ? `${prevContext} ${chunk}` : chunk
-        );
-        return prevTitle;
-      });
+        if (['全部重來', '清空全部', '清除全部'].includes(normalizedCmd)) {
+          if (
+            draftTitleRef.current.trim() ||
+            draftContextRef.current.trim() ||
+            voiceSegmentsRef.current.length > 0
+          ) {
+            const snap = pushUndoSnapshot();
+            setVoiceSegments([]);
+            setDraftTitle('');
+            setDraftContext('');
+            setProofreadBackup(null);
+            showCommandUndoBanner('已依語音指令清空草稿', snap);
+          }
+          return;
+        }
+        if (['停止錄音', '結束錄音'].includes(normalizedCmd)) {
+          voice.stop();
+          return;
+        }
+      }
+
+      pushUndoSnapshot();
+      setUsedVoiceInDraft(true);
+      setProofreadBackup(null);
+
+      const { text: cleanText, replacements } = applyGlossary(
+        result.text,
+        glossaryRef.current
+      );
+      const target: 'title' | 'context' = !draftTitleRef.current.trim()
+        ? 'title'
+        : 'context';
+
+      const newSegment: VoiceSegment = {
+        id: crypto.randomUUID(),
+        target,
+        text: cleanText,
+        rawText: result.text,
+        alternatives: result.alternatives,
+        replacements,
+      };
+
+      const nextSegments = [...voiceSegmentsRef.current, newSegment];
+      setVoiceSegments(nextSegments);
+
+      if (target === 'title') {
+        setDraftTitle(cleanText);
+      } else {
+        setDraftContext((prev) => (prev.trim() ? `${prev.trimEnd()} ${cleanText}` : cleanText));
+      }
+    },
+  });
+
+  const rerecordVoice = useVoiceInput({
+    lang: 'zh-TW',
+    continuous: false,
+    maxAlternatives: 5,
+    onFinalResult: (result: VoiceRecognitionResult) => {
+      const targetId = rerecordingIdRef.current;
+      setRerecordingSegmentId(null);
+      if (!targetId) return;
+
+      pushUndoSnapshot();
+      const { text: cleanText, replacements } = applyGlossary(
+        result.text,
+        glossaryRef.current
+      );
+      const nextSegments = voiceSegmentsRef.current.map((seg) =>
+        seg.id === targetId
+          ? {
+              ...seg,
+              text: cleanText,
+              rawText: result.text,
+              alternatives: result.alternatives,
+              replacements,
+            }
+          : seg
+      );
+      setVoiceSegments(nextSegments);
+      rebuildDraftFromSegments(nextSegments);
+      setProofreadBackup(null);
     },
   });
 
@@ -458,6 +1110,10 @@ export function App() {
       if (res.ok) {
         setDraftTitle('');
         setDraftContext('');
+        setVoiceSegments([]);
+        setSegmentUndoStack([]);
+        setProofreadBackup(null);
+        setCommandUndoNotice(null);
         lastAutoSkeletonRef.current = '';
         setTemplatePrompt(null);
         setUsedVoiceInDraft(false);
@@ -472,6 +1128,114 @@ export function App() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSelectAlternative = (segmentId: string, nextRawText: string) => {
+    pushUndoSnapshot();
+    const { text: cleanText, replacements } = applyGlossary(nextRawText, glossary);
+    const nextSegments = voiceSegments.map((seg) =>
+      seg.id === segmentId
+        ? { ...seg, text: cleanText, rawText: nextRawText, replacements }
+        : seg
+    );
+    setVoiceSegments(nextSegments);
+    rebuildDraftFromSegments(nextSegments);
+    setProofreadBackup(null);
+  };
+
+  const handleEditSegmentText = (segmentId: string, nextText: string) => {
+    pushUndoSnapshot();
+    const nextSegments = voiceSegments.map((seg) =>
+      seg.id === segmentId ? { ...seg, text: nextText, replacements: [] } : seg
+    );
+    setVoiceSegments(nextSegments);
+    rebuildDraftFromSegments(nextSegments);
+    setProofreadBackup(null);
+  };
+
+  const handleRevertSegmentGlossary = (segmentId: string) => {
+    pushUndoSnapshot();
+    const nextSegments = voiceSegments.map((seg) =>
+      seg.id === segmentId ? { ...seg, text: seg.rawText, replacements: [] } : seg
+    );
+    setVoiceSegments(nextSegments);
+    rebuildDraftFromSegments(nextSegments);
+  };
+
+  const handleRerecordSegment = (segmentId: string) => {
+    if (rerecordVoice.isListening && rerecordingSegmentId === segmentId) {
+      rerecordVoice.stop();
+      setRerecordingSegmentId(null);
+      return;
+    }
+    if (voice.isListening) {
+      voice.stop();
+    }
+    if (rerecordVoice.isListening) {
+      rerecordVoice.stop();
+    }
+    setRerecordingSegmentId(segmentId);
+    rerecordVoice.start();
+  };
+
+  const handleDeleteSegment = (segmentId: string) => {
+    pushUndoSnapshot();
+    const nextSegments = voiceSegments.filter((seg) => seg.id !== segmentId);
+    setVoiceSegments(nextSegments);
+    rebuildDraftFromSegments(nextSegments);
+    setProofreadBackup(null);
+  };
+
+  const handleUndoSegment = () => {
+    const last = segmentUndoStack[segmentUndoStack.length - 1];
+    if (!last) return;
+    setSegmentUndoStack((prev) => prev.slice(0, -1));
+    setVoiceSegments(last.segments);
+    setDraftTitle(last.title);
+    setDraftContext(last.context);
+    setProofreadBackup(null);
+  };
+
+  const handleApplyCommandUndo = () => {
+    if (!commandUndoNotice) return;
+    const { snapshot } = commandUndoNotice;
+    setVoiceSegments(snapshot.segments);
+    setDraftTitle(snapshot.title);
+    setDraftContext(snapshot.context);
+    setCommandUndoNotice(null);
+    if (commandUndoTimerRef.current) {
+      window.clearTimeout(commandUndoTimerRef.current);
+    }
+  };
+
+  const handleProofreadDraft = async () => {
+    if (isProofreading || !byok.config.enabled || byok.isLocked) return;
+    if (!draftTitle.trim() && !draftContext.trim()) return;
+    setIsProofreading(true);
+    setAiNotice(null);
+    try {
+      const backup = { title: draftTitle, context: draftContext };
+      const corrected = await proofreadTranscriptWithByok(
+        { title: draftTitle, contextNote: draftContext },
+        byok.config
+      );
+      setProofreadBackup(backup);
+      setDraftTitle(corrected.title);
+      setDraftContext(corrected.contextNote);
+    } catch (err) {
+      setAiNotice(
+        err instanceof Error ? err.message : 'AI 錯字校對失敗，請檢查金鑰設定或稍後再試。'
+      );
+    } finally {
+      setIsProofreading(false);
+    }
+  };
+
+  const handleRevertProofread = () => {
+    if (!proofreadBackup) return;
+    setDraftTitle(proofreadBackup.title);
+    setDraftContext(proofreadBackup.context);
+    setProofreadBackup(null);
   };
 
   const handleDelete = (id: string) => {
@@ -600,6 +1364,21 @@ export function App() {
         </div>
 
         <div className="top-actions">
+          <button
+            type="button"
+            className="sync-pill"
+            onClick={() => setGlossaryModalOpen(true)}
+            title="管理語音錯字自動替換詞庫"
+          >
+            <BookText size={14} />
+            <span>
+              語音詞庫
+              {glossary.filter((e) => e.enabled).length > 0
+                ? ` (${glossary.filter((e) => e.enabled).length})`
+                : ''}
+            </span>
+          </button>
+
           <button
             type="button"
             className={`sync-pill ${byok.config.enabled && !byok.isLocked ? 'is-cloud' : ''}`}
@@ -760,22 +1539,60 @@ export function App() {
           </button>
         </div>
 
-        {voice.isListening && (
+        {(voice.isListening || rerecordVoice.isListening) && (
           <div className="interim-banner">
             <Mic size={14} />
             <span>
-              {voice.interimText
-                ? `正在聆聽：${voice.interimText}`
-                : '正在聆聽語音… 請直接說出待辦與背景脈絡'}
+              {rerecordVoice.isListening
+                ? rerecordVoice.interimText
+                  ? `重錄這一段：${rerecordVoice.interimText}`
+                  : '正在重錄這一段… 請說出正確內容'
+                : voice.interimText
+                  ? `正在聆聽：${voice.interimText}`
+                  : '正在聆聽語音… 請直接說出待辦與背景脈絡'}
             </span>
           </div>
         )}
 
-        {voice.error && (
+        {(voice.error || rerecordVoice.error) && (
           <div className="interim-banner" style={{ marginTop: 8 }}>
-            <span>{voice.error}</span>
+            <span>{voice.error || rerecordVoice.error}</span>
           </div>
         )}
+
+        {commandUndoNotice && (
+          <div
+            className="interim-banner"
+            style={{ marginTop: 8, justifyContent: 'space-between' }}
+            role="status"
+          >
+            <span>{commandUndoNotice.label}</span>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ fontSize: '0.78rem', padding: '3px 8px' }}
+              onClick={handleApplyCommandUndo}
+            >
+              <RotateCcw size={12} />
+              <span>復原</span>
+            </button>
+          </div>
+        )}
+
+        <VoiceSegmentEditor
+          segments={voiceSegments}
+          rerecordingSegmentId={rerecordingSegmentId}
+          voiceCommandsEnabled={voiceCommandsEnabled}
+          onToggleVoiceCommands={setVoiceCommandsEnabled}
+          onSelectAlternative={handleSelectAlternative}
+          onEditSegmentText={handleEditSegmentText}
+          onRevertGlossary={handleRevertSegmentGlossary}
+          onLearnGlossary={handleLearnGlossary}
+          onRerecordSegment={handleRerecordSegment}
+          onDeleteSegment={handleDeleteSegment}
+          onUndoLastSegment={handleUndoSegment}
+          canUndo={segmentUndoStack.length > 0}
+        />
 
         {templatePrompt && (
           <div
@@ -858,6 +1675,32 @@ export function App() {
           </div>
 
           <div className="composer-submit-group">
+            {proofreadBackup ? (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleRevertProofread}
+                title="還原至 AI 校對前的內容"
+              >
+                <RotateCcw size={14} />
+                <span>還原校對前</span>
+              </button>
+            ) : (
+              byok.config.enabled &&
+              !byok.isLocked &&
+              (draftTitle.trim() || draftContext.trim()) && (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => void handleProofreadDraft()}
+                  disabled={isProofreading}
+                  title="只修正台灣中文同音錯字與標點，不拆分卡片"
+                >
+                  <Wand2 size={14} />
+                  <span>{isProofreading ? '校對中...' : 'AI 錯字校對'}</span>
+                </button>
+              )
+            )}
             <span className="shortcut-hint">
               {parseMode === 'smart' && !byok.config.enabled
                 ? '未設定 AI 金鑰，將自動降級本機整理'
@@ -988,6 +1831,9 @@ export function App() {
                   key={todo.id}
                   todo={todo}
                   canReorder={isReorderEnabled}
+                  glossary={glossary}
+                  byokConfig={byok.config}
+                  byokLocked={byok.isLocked}
                   onToggle={toggleTodo}
                   onDelete={handleDelete}
                   onUpdate={updateTodo}
@@ -1165,6 +2011,13 @@ export function App() {
             syncDraftContextWithIcon(selectedIcon);
           }
         }}
+      />
+
+      <VoiceGlossaryModal
+        open={glossaryModalOpen}
+        entries={glossary}
+        onChange={updateGlossary}
+        onClose={() => setGlossaryModalOpen(false)}
       />
 
       {recentlyDeleted && (

@@ -71,3 +71,38 @@ export interface AuthUser {
   name: string;
   avatarUrl: string;
 }
+
+export interface VoiceRecognitionResult {
+  text: string;
+  alternatives: string[];
+}
+
+export interface GlossaryEntry {
+  id: string;
+  wrong: string;
+  correct: string;
+  enabled: boolean;
+  createdAt: string;
+}
+
+export interface VoiceGlossaryReplacement {
+  wrong: string;
+  correct: string;
+}
+
+export interface VoiceSegment {
+  id: string;
+  target: 'title' | 'context';
+  text: string;
+  rawText: string;
+  alternatives: string[];
+  replacements: VoiceGlossaryReplacement[];
+}
+
+export interface VoiceEditSuggestion {
+  title: string;
+  contextNote: string;
+  tags: string[];
+  icon?: NoteIconId;
+  summary: string;
+}

@@ -1320,3 +1320,562 @@
     opacity: 0.85;
   }
 }
+
+/* ===== 語音編輯模式：分段膠囊、候選切換、卡片語音修改與詞庫 ===== */
+.voice-segment-panel {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--celadon-200);
+  background: var(--celadon-50);
+}
+
+.voice-segment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.voice-segment-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--celadon-800);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.voice-segment-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.voice-cmd-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.76rem;
+  color: var(--ink-700);
+  cursor: pointer;
+}
+
+.voice-cmd-switch input {
+  accent-color: var(--celadon-700);
+}
+
+.voice-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: #ffffff;
+  color: var(--ink-700);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.voice-mini-btn:hover:not(:disabled) {
+  border-color: var(--celadon-600);
+  color: var(--celadon-800);
+}
+
+.voice-mini-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.voice-segment-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.voice-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: #ffffff;
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.voice-chip.is-selected {
+  border-color: var(--celadon-700);
+  box-shadow: 0 0 0 2px rgba(43, 72, 74, 0.12);
+}
+
+.voice-chip.is-rerecording {
+  border-color: var(--vermilion);
+  box-shadow: 0 0 0 2px rgba(184, 64, 52, 0.14);
+}
+
+.voice-chip.has-glossary {
+  background: #f8fbfa;
+}
+
+.voice-chip-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: none;
+  background: transparent;
+  color: var(--ink-900);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.voice-chip-target {
+  font-size: 0.68rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--paper-200);
+  color: var(--ink-700);
+  font-weight: 600;
+}
+
+.voice-chip-text {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-chip-badge {
+  font-size: 0.68rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--celadon-100);
+  color: var(--celadon-700);
+  font-weight: 600;
+}
+
+.voice-chip-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 28px;
+  border: none;
+  border-left: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--ink-500);
+  cursor: pointer;
+}
+
+.voice-chip-action:hover {
+  background: var(--paper-100);
+  color: var(--celadon-700);
+}
+
+.voice-chip-action.is-active {
+  background: #fdf5f4;
+  color: var(--vermilion);
+}
+
+.voice-chip-action.danger:hover {
+  background: #fdf5f4;
+  color: var(--vermilion);
+}
+
+.voice-inspector {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.voice-inspector-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.voice-inspector-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-700);
+}
+
+.voice-glossary-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--celadon-50);
+  color: var(--celadon-800);
+  font-size: 0.76rem;
+}
+
+.voice-alt-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.voice-alt-label {
+  font-size: 0.74rem;
+  color: var(--ink-500);
+}
+
+.voice-alt-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.voice-alt-btn {
+  padding: 4px 9px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-strong);
+  background: var(--paper-50);
+  color: var(--ink-700);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.voice-alt-btn:hover {
+  border-color: var(--celadon-600);
+  color: var(--celadon-800);
+}
+
+.voice-alt-btn.is-current {
+  border-color: var(--celadon-700);
+  background: var(--celadon-100);
+  color: var(--celadon-800);
+  font-weight: 600;
+}
+
+.voice-inline-edit {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.voice-inline-edit .drawer-input {
+  flex: 1;
+  min-width: 180px;
+}
+
+.voice-learned-msg {
+  font-size: 0.76rem;
+  color: var(--celadon-700);
+  font-weight: 500;
+}
+
+/* 卡片內語音修改與逐字稿編修 */
+.icon-btn.is-voice-active {
+  color: var(--celadon-700);
+  background: var(--celadon-100);
+}
+
+.card-voice-edit-panel {
+  margin-bottom: 14px;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--celadon-200);
+  background: var(--celadon-50);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card-voice-edit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--celadon-800);
+}
+
+.card-voice-input-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.card-voice-input-row .drawer-input {
+  flex: 1;
+  min-width: 180px;
+}
+
+.voice-mini-mic {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: #ffffff;
+  color: var(--celadon-700);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.voice-mini-mic.is-listening {
+  border-color: var(--vermilion);
+  background: #fdf5f4;
+  color: var(--vermilion);
+}
+
+.voice-edit-error {
+  font-size: 0.78rem;
+  color: var(--vermilion);
+}
+
+.card-voice-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.voice-diff-preview {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.voice-diff-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--celadon-800);
+}
+
+.voice-diff-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.voice-diff-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.voice-diff-field-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.76rem;
+}
+
+.voice-diff-textarea {
+  min-height: 56px;
+  font-size: 0.84rem;
+  padding: 6px 9px;
+}
+
+.voice-diff-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.78rem;
+}
+
+.voice-diff-label {
+  font-weight: 600;
+  color: var(--ink-500);
+  min-width: 36px;
+}
+
+.voice-diff-old {
+  color: var(--ink-500);
+  text-decoration: line-through;
+}
+
+.voice-diff-arrow {
+  color: var(--ink-400);
+}
+
+.voice-diff-new {
+  color: var(--celadon-800);
+  font-weight: 600;
+}
+
+.voice-diff-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.drawer-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.drawer-label-row .drawer-section-label {
+  margin-bottom: 0;
+}
+
+.drawer-field-mic {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-strong);
+  background: #ffffff;
+  color: var(--ink-700);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.drawer-field-mic:hover {
+  border-color: var(--celadon-600);
+  color: var(--celadon-800);
+}
+
+.drawer-field-mic.is-listening {
+  border-color: var(--vermilion);
+  background: #fdf5f4;
+  color: var(--vermilion);
+}
+
+/* 個人錯字替換詞庫視窗 */
+.glossary-add-form {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.glossary-add-form .drawer-input {
+  flex: 1;
+  min-width: 130px;
+}
+
+.glossary-arrow {
+  color: var(--ink-500);
+  font-weight: 600;
+}
+
+.glossary-samples {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.glossary-samples-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--ink-500);
+}
+
+.glossary-sample-chip {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-strong);
+  background: var(--paper-50);
+  color: var(--ink-700);
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.glossary-sample-chip:hover:not(:disabled) {
+  border-color: var(--celadon-600);
+  color: var(--celadon-800);
+}
+
+.glossary-sample-chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.glossary-list {
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.glossary-empty {
+  padding: 18px 12px;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--ink-500);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.glossary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--paper-50);
+}
+
+.glossary-row.is-disabled {
+  opacity: 0.55;
+}
+
+.glossary-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  font-size: 0.84rem;
+}
+
+.glossary-toggle input {
+  accent-color: var(--celadon-700);
+}
+
+.glossary-wrong {
+  color: var(--ink-500);
+  text-decoration: line-through;
+}
+
+.glossary-correct {
+  color: var(--celadon-800);
+  font-weight: 600;
+}

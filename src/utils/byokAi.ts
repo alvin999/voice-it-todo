@@ -1,4 +1,10 @@
-import type { ByokConfig, ByokProvider, ParsedNoteInput } from '../types';
+import type {
+  ByokConfig,
+  ByokProvider,
+  ParsedNoteInput,
+  Todo,
+  VoiceEditSuggestion,
+} from '../types';
 import { isNoteIconId, loadIconTemplates, NOTE_ICON_META } from './noteIcons';
 
 export interface ProviderPreset {
@@ -186,6 +192,7 @@ export function buildSystemPrompt(): string {
 
   return [
     '你是繁體中文待辦事項整理助手，請將使用者的輸入整理為結構化待辦清單。',
+    '輸入內容可能來自台灣中文語音辨識，請依上下文自動修正明顯同音錯字與語助詞（如「那個、就是」），但勿擅自改變專有名詞或原本的行動原意。',
     '只輸出合法 JSON，格式為：',
     '{"items":[{"title":"行動標題","contextNote":"脈絡備註細節","tags":["標籤"],"icon":"圖示ID"}]}',
     `icon 請從以下 ID 擇一：${ICON_GUIDE}。`,
@@ -233,21 +240,28 @@ function extractParsedItems(text: string, rawText: string): ParsedNoteInput[] {
   }
 }
 
-export async function parseNoteWithByok(
-  rawText: string,
-  config: ByokConfig
-): Promise<ParsedNoteInput[]> {
+async function callByokLlm(
+  systemPrompt: string,
+  userPrompt: string,
+  config: ByokConfig,
+  options: { temperature?: number; maxTokens?: number } = {}
+): Promise<string> {
   const preset = PROVIDER_PRESETS[config.provider];
-  if (!config.enabled) return [];
-  if (preset.requiresKey && !config.apiKey.trim()) return [];
+  if (!config.enabled) {
+    throw new Error('尚未啟用 AI 金鑰設定');
+  }
+  if (preset.requiresKey && !config.apiKey.trim()) {
+    throw new Error(`請先填寫 ${preset.label} API 金鑰`);
+  }
 
   const baseUrl = (config.baseUrl || preset.defaultBaseUrl).replace(/\/+$/, '');
   const model = config.model.trim();
-  if (!model) return [];
+  if (!model) {
+    throw new Error('請先選擇或輸入 AI 模型名稱');
+  }
 
-  let rawResponseText = '';
-
-  const systemPrompt = buildSystemPrompt();
+  const temperature = options.temperature ?? 0.2;
+  const maxTokens = options.maxTokens ?? 512;
 
   if (config.provider === 'gemini') {
     const url = `${baseUrl}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(
@@ -258,16 +272,18 @@ export async function parseNoteWithByok(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: 'user', parts: [{ text: rawText }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 512 },
+        contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+        generationConfig: { temperature, maxOutputTokens: maxTokens },
       }),
     });
     if (!res.ok) throw new Error(`Gemini API 錯誤 (${res.status})`);
     const data = (await res.json()) as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
     };
-    rawResponseText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-  } else if (config.provider === 'claude') {
+    return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  }
+
+  if (config.provider === 'claude') {
     const res = await fetch(`${baseUrl}/messages`, {
       method: 'POST',
       headers: {
@@ -278,51 +294,172 @@ export async function parseNoteWithByok(
       },
       body: JSON.stringify({
         model,
-        max_tokens: 512,
-        temperature: 0.2,
+        max_tokens: maxTokens,
+        temperature,
         system: systemPrompt,
-        messages: [{ role: 'user', content: rawText }],
+        messages: [{ role: 'user', content: userPrompt }],
       }),
     });
     if (!res.ok) throw new Error(`Claude API 錯誤 (${res.status})`);
     const data = (await res.json()) as {
       content?: Array<{ type?: string; text?: string }>;
     };
-    rawResponseText = data.content?.find((b) => b.type === 'text')?.text ?? '';
-  } else {
-    // OpenAI / Groq / OpenRouter / Ollama (皆相容 /chat/completions)
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (config.apiKey.trim()) {
-      headers.Authorization = `Bearer ${config.apiKey.trim()}`;
-    }
-    if (config.provider === 'openrouter') {
-      if (typeof window !== 'undefined' && window.location?.origin) {
-        headers['HTTP-Referer'] = window.location.origin;
-      }
-      headers['X-Title'] = 'Voice-it Todo';
-    }
-
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        max_tokens: 512,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: rawText },
-        ],
-      }),
-    });
-    if (!res.ok) throw new Error(`${preset.label} API 錯誤 (${res.status})`);
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    rawResponseText = data.choices?.[0]?.message?.content ?? '';
+    return data.content?.find((b) => b.type === 'text')?.text ?? '';
   }
 
+  // OpenAI / Groq / OpenRouter / Ollama (皆相容 /chat/completions)
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (config.apiKey.trim()) {
+    headers.Authorization = `Bearer ${config.apiKey.trim()}`;
+  }
+  if (config.provider === 'openrouter') {
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      headers['HTTP-Referer'] = window.location.origin;
+    }
+    headers['X-Title'] = 'Voice-it Todo';
+  }
+
+  const res = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model,
+      temperature,
+      max_tokens: maxTokens,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error(`${preset.label} API 錯誤 (${res.status})`);
+  const data = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  return data.choices?.[0]?.message?.content ?? '';
+}
+
+export async function parseNoteWithByok(
+  rawText: string,
+  config: ByokConfig
+): Promise<ParsedNoteInput[]> {
+  const preset = PROVIDER_PRESETS[config.provider];
+  if (!config.enabled) return [];
+  if (preset.requiresKey && !config.apiKey.trim()) return [];
+  if (!config.model.trim()) return [];
+
+  const systemPrompt = buildSystemPrompt();
+  const rawResponseText = await callByokLlm(systemPrompt, rawText, config);
   return extractParsedItems(rawResponseText, rawText);
+}
+
+/**
+ * 僅校對台灣中文語音辨識產生的同音錯字、贅詞與標點，不拆分卡片。
+ */
+export async function proofreadTranscriptWithByok(
+  input: { title: string; contextNote: string },
+  config: ByokConfig
+): Promise<{ title: string; contextNote: string }> {
+  const systemPrompt = [
+    '你是台灣繁體中文語音逐字稿校對助手。',
+    '使用者透過語音輸入待辦標題與脈絡備註，可能含有同音錯字、漏字或標點混亂。',
+    '請依上下文僅做錯字修正與標點順稿，保持原意、語氣與 #標籤 不變，不要拆成多筆，也不要憑空新增內容。',
+    '只輸出合法 JSON：{"title":"修正後標題","contextNote":"修正後備註"}',
+  ].join('\n');
+
+  const userPrompt = JSON.stringify({
+    title: input.title,
+    contextNote: input.contextNote,
+  });
+
+  const rawResponseText = await callByokLlm(systemPrompt, userPrompt, config, {
+    temperature: 0.1,
+    maxTokens: 512,
+  });
+
+  const match = rawResponseText.match(/\{[\s\S]*\}/);
+  if (!match) {
+    throw new Error('AI 未回傳有效的校對結果');
+  }
+
+  const parsed = JSON.parse(match[0]) as { title?: unknown; contextNote?: unknown };
+  const nextTitle = typeof parsed.title === 'string' ? parsed.title.trim() : input.title;
+  const nextContext =
+    typeof parsed.contextNote === 'string' ? parsed.contextNote.trim() : input.contextNote;
+
+  return {
+    title: nextTitle || input.title,
+    contextNote: nextContext,
+  };
+}
+
+/**
+ * 依據使用者的口述修改指令，更新既有待辦事項並回傳預覽建議。
+ */
+export async function editTodoWithVoice(
+  todo: Pick<Todo, 'title' | 'contextNote' | 'tags' | 'icon'>,
+  instruction: string,
+  config: ByokConfig
+): Promise<VoiceEditSuggestion> {
+  const systemPrompt = [
+    '你是繁體中文待辦便利貼的語音編輯助手。',
+    '請根據使用者的「語音修改指令」更新現有待辦事項（只修改指令要求調整的部分，未提及的欄位請保持原樣）。',
+    '注意語音指令本身也可能有台灣中文同音錯字，請先依上下文理解原意再套用修改。',
+    `icon 請從以下 ID 擇一（若無須變更請保留原值）：${ICON_GUIDE}。`,
+    '只輸出合法 JSON：',
+    '{"title":"更新後標題","contextNote":"更新後脈絡備註","tags":["標籤"],"icon":"圖示ID","summary":"一句話說明本次改動"}',
+  ].join('\n');
+
+  const userPrompt = JSON.stringify({
+    currentTodo: {
+      title: todo.title,
+      contextNote: todo.contextNote,
+      tags: todo.tags,
+      icon: todo.icon ?? 'sticky-note',
+    },
+    voiceInstruction: instruction,
+  });
+
+  const rawResponseText = await callByokLlm(systemPrompt, userPrompt, config, {
+    temperature: 0.15,
+    maxTokens: 512,
+  });
+
+  const match = rawResponseText.match(/\{[\s\S]*\}/);
+  if (!match) {
+    throw new Error('AI 未回傳有效的修改建議');
+  }
+
+  const parsed = JSON.parse(match[0]) as {
+    title?: unknown;
+    contextNote?: unknown;
+    tags?: unknown;
+    icon?: unknown;
+    summary?: unknown;
+  };
+
+  const title =
+    typeof parsed.title === 'string' && parsed.title.trim()
+      ? parsed.title.trim()
+      : todo.title;
+  const contextNote =
+    typeof parsed.contextNote === 'string' ? parsed.contextNote.trim() : todo.contextNote;
+  const tags = Array.isArray(parsed.tags)
+    ? parsed.tags.map((t) => String(t).trim()).filter(Boolean)
+    : todo.tags;
+  const icon = isNoteIconId(parsed.icon) ? parsed.icon : todo.icon;
+  const summary =
+    typeof parsed.summary === 'string' && parsed.summary.trim()
+      ? parsed.summary.trim()
+      : '已依語音指令調整內容';
+
+  return {
+    title,
+    contextNote,
+    tags,
+    icon,
+    summary,
+  };
 }

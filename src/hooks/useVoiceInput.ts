@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { VoiceRecognitionResult } from '../types';
 
 interface SpeechRecognitionAlternativeLike {
   transcript: string;
@@ -26,6 +27,7 @@ interface SpeechRecognitionInstance {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
+  maxAlternatives: number;
   onstart: (() => void) | null;
   onresult: ((event: SpeechRecognitionEventLike) => void) | null;
   onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
@@ -48,10 +50,19 @@ function getSpeechRecognitionCtor(): SpeechRecognitionConstructor | null {
 
 export interface UseVoiceInputOptions {
   lang?: string;
+  continuous?: boolean;
+  maxAlternatives?: number;
   onFinalTranscript?: (text: string) => void;
+  onFinalResult?: (result: VoiceRecognitionResult) => void;
 }
 
-export function useVoiceInput({ lang = 'zh-TW', onFinalTranscript }: UseVoiceInputOptions = {}) {
+export function useVoiceInput({
+  lang = 'zh-TW',
+  continuous = true,
+  maxAlternatives = 5,
+  onFinalTranscript,
+  onFinalResult,
+}: UseVoiceInputOptions = {}) {
   const [isSupported] = useState(() => getSpeechRecognitionCtor() !== null);
   const [isListening, setIsListening] = useState(false);
   const [interimText, setInterimText] = useState('');
@@ -60,6 +71,8 @@ export function useVoiceInput({ lang = 'zh-TW', onFinalTranscript }: UseVoiceInp
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const onFinalRef = useRef(onFinalTranscript);
   onFinalRef.current = onFinalTranscript;
+  const onFinalResultRef = useRef(onFinalResult);
+  onFinalResultRef.current = onFinalResult;
 
   const stop = useCallback(() => {
     recognitionRef.current?.stop();
@@ -74,11 +87,17 @@ export function useVoiceInput({ lang = 'zh-TW', onFinalTranscript }: UseVoiceInp
       return;
     }
 
+    if (recognitionRef.current) {
+      recognitionRef.current.abort();
+      recognitionRef.current = null;
+    }
+
     setError(null);
     const recognition = new Ctor();
     recognition.lang = lang;
-    recognition.continuous = true;
+    recognition.continuous = continuous;
     recognition.interimResults = true;
+    recognition.maxAlternatives = Math.max(1, maxAlternatives);
 
     recognition.onstart = () => {
       setIsListening(true);
@@ -87,20 +106,54 @@ export function useVoiceInput({ lang = 'zh-TW', onFinalTranscript }: UseVoiceInp
     recognition.onresult = (event) => {
       let interim = '';
       let finalChunk = '';
+      const altBuckets: string[][] = [];
 
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
         const result = event.results[i];
         const text = result[0]?.transcript ?? '';
         if (result.isFinal) {
           finalChunk += text;
+          const alts: string[] = [];
+          for (let a = 0; a < result.length; a += 1) {
+            const altText = (result[a]?.transcript ?? '').trim();
+            if (altText && !alts.includes(altText)) {
+              alts.push(altText);
+            }
+          }
+          if (alts.length > 0) {
+            altBuckets.push(alts);
+          }
         } else {
           interim += text;
         }
       }
 
       setInterimText(interim.trim());
-      if (finalChunk.trim()) {
-        onFinalRef.current?.(finalChunk.trim());
+      const trimmedFinal = finalChunk.trim();
+      if (trimmedFinal) {
+        // 合併同一輪的候選結果，保留第一順位與去重後的其他候選
+        const mergedAlternatives: string[] = [trimmedFinal];
+        if (altBuckets.length === 1) {
+          for (const alt of altBuckets[0]) {
+            if (!mergedAlternatives.includes(alt)) {
+              mergedAlternatives.push(alt);
+            }
+          }
+        } else if (altBuckets.length > 1) {
+          const maxAltCount = Math.max(...altBuckets.map((b) => b.length));
+          for (let idx = 1; idx < maxAltCount; idx += 1) {
+            const combined = altBuckets.map((b) => b[idx] ?? b[0] ?? '').join('').trim();
+            if (combined && !mergedAlternatives.includes(combined)) {
+              mergedAlternatives.push(combined);
+            }
+          }
+        }
+
+        onFinalRef.current?.(trimmedFinal);
+        onFinalResultRef.current?.({
+          text: trimmedFinal,
+          alternatives: mergedAlternatives,
+        });
       }
     };
 
@@ -126,7 +179,7 @@ export function useVoiceInput({ lang = 'zh-TW', onFinalTranscript }: UseVoiceInp
     } catch {
       setIsListening(false);
     }
-  }, [lang]);
+  }, [lang, continuous, maxAlternatives]);
 
   const toggle = useCallback(() => {
     if (isListening) {
