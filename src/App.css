@@ -962,6 +962,7 @@
 .modal-panel {
   width: 100%;
   max-width: 480px;
+  min-width: 0;
   background: #ffffff;
   border-radius: var(--radius-lg);
   padding: 24px;
@@ -1000,10 +1001,18 @@
 .field-row {
   display: flex;
   gap: 8px;
+  min-width: 0;
+}
+
+.field-row .btn-secondary {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .field-input {
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
   padding: 8px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
@@ -1011,6 +1020,12 @@
   font-size: 0.88rem;
   color: var(--ink-900);
   outline: none;
+}
+
+select.field-input {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .field-input:focus {
